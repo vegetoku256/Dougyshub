@@ -1,5 +1,5 @@
 --!strict
--- EclipseUI.lua — v9.0-scroll
+-- EclipseUI.lua — v9.0-scroll (patched)
 -- Adds scrollable content area:
 --   bodyScroll : ScrollingFrame (visible area)
 --   body       : Frame (actual tab pages parented here)
@@ -546,20 +546,32 @@ function EclipseUI:CreateWindow(cfg)
             return section
         end
 
+        -- --- patched: factorize selection and call directly for first tab
         local tab = {
             Page = tabPage, Columns = columns,
             AddLeftSection = function(_,t) return AddSection("Left",t) end,
             AddRightSection = function(_,t) return AddSection("Right",t) end,
             AddSection = function(_,t) return AddSection("Left",t) end,
         }
-        tabBtn.MouseButton1Click:Connect(function()
-            for _,other in pairs(body:GetChildren()) do if other:IsA("Frame") then other.Visible = false end end
+
+        local function selectThisTab()
+            for _,other in pairs(body:GetChildren()) do
+                if other:IsA("Frame") then other.Visible = false end
+            end
             tabPage.Visible = true
             bodyScroll.CanvasPosition = Vector2.new(0,0) -- reset scroll when switching tabs
-            for _,b in pairs(tabsBar:GetChildren()) do if b:IsA("TextButton") then b.TextColor3 = theme.subtext end end
+            for _,b in pairs(tabsBar:GetChildren()) do
+                if b:IsA("TextButton") then b.TextColor3 = theme.subtext end
+            end
             tabBtn.TextColor3 = theme.text
-        end)
-        if #body:GetChildren() == 1 then task.defer(function() tabBtn.MouseButton1Click:Fire() end) end
+        end
+
+        tabBtn.MouseButton1Click:Connect(selectThisTab)
+
+        if #body:GetChildren() == 1 then
+            task.defer(selectThisTab) -- no :Fire() on RBXScriptSignal
+        end
+
         return tab
     end
 
