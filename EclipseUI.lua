@@ -1,5 +1,5 @@
 --!strict
--- EclipseUI.lua — v9.0-scroll (patched)
+-- EclipseUI.lua — v9.0-scroll
 -- Adds scrollable content area:
 --   bodyScroll : ScrollingFrame (visible area)
 --   body       : Frame (actual tab pages parented here)
@@ -98,6 +98,84 @@ function EclipseUI:CreateWindow(cfg)
     makeRounded(closeBtn, 8); styleBtn(closeBtn, "close")
     local miniBtn  = create("TextButton", { Size = UDim2.fromOffset(26,26), Position = UDim2.new(1,-68,0.5,-13), BackgroundColor3 = theme.buttonBase, BorderSizePixel = 0, Text = "□", TextColor3 = theme.text, Font = Enum.Font.GothamBold, TextSize = 14, Parent = titleBar })
     makeRounded(miniBtn, 8); styleBtn(miniBtn)
+
+
+    -- AFTER local gui, root, titleBar, buttons are created:
+
+    -- 1) Responsive / Mobile size
+    local isTouch = UISg.TouchEnabled
+    local responsive = (cfg.Responsive ~= false) -- default ON
+    local mobileSize = cfg.MobileSize or UDim2.fromOffset(540, 380)
+    if responsive then
+        if isTouch then
+            root.Size = mobileSize
+            -- optional: slimmer tabs on mobile
+            -- tabsBar.Size = UDim2.new(0, 130, 1, -titleBarH)
+        else
+            -- keep cfg.Size or default
+            root.Size = cfg.Size or UDim2.fromOffset(600, 440)
+        end
+    end
+
+    -- ===== Global UI Toggle Key + reopen hint =====
+    local uiToggleKey: Enum.KeyCode = cfg.ToggleKey or Enum.KeyCode.RightShift
+    -- (existing hint code remains)
+
+    -- 2) Touch “Open Menu” button (appears under the hint)
+    local touchOpenBtn = create("TextButton", {
+        Name = "TouchOpen",
+        Visible = false,
+        BackgroundColor3 = theme.buttonBase,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Text = "Open Menu",
+        TextColor3 = theme.text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        Size = UDim2.fromOffset(160, 30),
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.new(0.5, 0, 0, 40), -- just below the hint
+        ZIndex = 301,
+        Parent = gui,
+    })
+    makeRounded(touchOpenBtn, 8)
+    create("UIStroke", { Parent = touchOpenBtn, Color = theme.stroke, Transparency = 0.15 })
+
+    local function placeTouchOpenUnderHint()
+        if not (hint.Visible and touchOpenBtn.Visible) then return end
+        local hx, hy = hint.AbsolutePosition.X, hint.AbsolutePosition.Y
+        local hw, hh = hint.AbsoluteSize.X, hint.AbsoluteSize.Y
+        local centerX = hx + hw/2
+        touchOpenBtn.Position = UDim2.fromOffset(math.floor(centerX), math.floor(hy + hh + 8))
+    end
+
+    touchOpenBtn.MouseButton1Click:Connect(function()
+        root.Visible = true
+    end)
+
+    -- show/hide logic for hint + touch button
+    local function refreshTouchOpen()
+        local showTouch = isTouch and (not root.Visible)
+        touchOpenBtn.Visible = showTouch
+        if showTouch then placeTouchOpenUnderHint() end
+    end
+
+    -- keep your existing showHint/hideHint, and add:
+    root:GetPropertyChangedSignal("Visible"):Connect(function()
+        if root.Visible then hideHint() else showHint() end
+        refreshTouchOpen()
+    end)
+    UISg.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            placeTouchOpenUnderHint()
+        end
+    end)
+
+    -- also call once after constructing:
+    task.defer(function()
+        refreshTouchOpen()
+    end)
+
 
     -- ===== Top Banner (outside window, draggable) =====
     local bannerH = 30
@@ -546,32 +624,20 @@ function EclipseUI:CreateWindow(cfg)
             return section
         end
 
-        -- --- patched: factorize selection and call directly for first tab
         local tab = {
             Page = tabPage, Columns = columns,
             AddLeftSection = function(_,t) return AddSection("Left",t) end,
             AddRightSection = function(_,t) return AddSection("Right",t) end,
             AddSection = function(_,t) return AddSection("Left",t) end,
         }
-
-        local function selectThisTab()
-            for _,other in pairs(body:GetChildren()) do
-                if other:IsA("Frame") then other.Visible = false end
-            end
+        tabBtn.MouseButton1Click:Connect(function()
+            for _,other in pairs(body:GetChildren()) do if other:IsA("Frame") then other.Visible = false end end
             tabPage.Visible = true
             bodyScroll.CanvasPosition = Vector2.new(0,0) -- reset scroll when switching tabs
-            for _,b in pairs(tabsBar:GetChildren()) do
-                if b:IsA("TextButton") then b.TextColor3 = theme.subtext end
-            end
+            for _,b in pairs(tabsBar:GetChildren()) do if b:IsA("TextButton") then b.TextColor3 = theme.subtext end end
             tabBtn.TextColor3 = theme.text
-        end
-
-        tabBtn.MouseButton1Click:Connect(selectThisTab)
-
-        if #body:GetChildren() == 1 then
-            task.defer(selectThisTab) -- no :Fire() on RBXScriptSignal
-        end
-
+        end)
+        if #body:GetChildren() == 1 then task.defer(function() tabBtn.MouseButton1Click:Fire() end) end
         return tab
     end
 
