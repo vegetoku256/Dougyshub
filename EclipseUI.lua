@@ -1,9 +1,9 @@
 --!strict
--- EclipseUI.lua — v9.0-scroll
--- Adds scrollable content area:
---   bodyScroll : ScrollingFrame (visible area)
---   body       : Frame (actual tab pages parented here)
--- Keeps: banner drag, Settings, tooltips, AddInput, dropdown fixes, fullWidth rows, live accent, FPS cap.
+-- EclipseUI.lua — v9.1-scroll (mobile-friendly)
+-- Changes:
+--  • Responsive size: auto smaller on touch (cfg.Responsive ~= false; cfg.MobileSize to override)
+--  • Touch "Open Menu" button below the reopen hint (visible only when hidden + on touch)
+--  • Touch-enabled dragging (title bar & banner)
 
 local EclipseUI = {}
 EclipseUI.__index = EclipseUI
@@ -74,7 +74,14 @@ function EclipseUI:CreateWindow(cfg)
 
     local gui = create("ScreenGui", { Name = "EclipseUI", IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Parent = game:GetService("CoreGui") })
 
-    local root = create("Frame", { Size = cfg.Size or UDim2.fromOffset(600, 440), Position = UDim2.fromScale(0.5,0.5), AnchorPoint = Vector2.new(0.5,0.5), BackgroundColor3 = theme.bg, BorderSizePixel = 0, Parent = gui })
+    -- Responsive size: smaller on touch unless disabled
+    local isTouch = UISg.TouchEnabled
+    local defaultDesktopSize = cfg.Size or UDim2.fromOffset(600, 440)
+    local mobileSize = cfg.MobileSize or UDim2.fromOffset(520, 360)
+    local responsive = (cfg.Responsive ~= false)
+    local initialSize = (responsive and isTouch) and mobileSize or defaultDesktopSize
+
+    local root = create("Frame", { Size = initialSize, Position = UDim2.fromScale(0.5,0.5), AnchorPoint = Vector2.new(0.5,0.5), BackgroundColor3 = theme.bg, BorderSizePixel = 0, Parent = gui })
     makeRounded(root, 16); create("UIStroke", { Parent = root, Color = theme.panel2, Transparency = 0.25 })
 
     local titleBarH = 40
@@ -98,84 +105,6 @@ function EclipseUI:CreateWindow(cfg)
     makeRounded(closeBtn, 8); styleBtn(closeBtn, "close")
     local miniBtn  = create("TextButton", { Size = UDim2.fromOffset(26,26), Position = UDim2.new(1,-68,0.5,-13), BackgroundColor3 = theme.buttonBase, BorderSizePixel = 0, Text = "□", TextColor3 = theme.text, Font = Enum.Font.GothamBold, TextSize = 14, Parent = titleBar })
     makeRounded(miniBtn, 8); styleBtn(miniBtn)
-
-
-    -- AFTER local gui, root, titleBar, buttons are created:
-
-    -- 1) Responsive / Mobile size
-    local isTouch = UISg.TouchEnabled
-    local responsive = (cfg.Responsive ~= false) -- default ON
-    local mobileSize = cfg.MobileSize or UDim2.fromOffset(540, 380)
-    if responsive then
-        if isTouch then
-            root.Size = mobileSize
-            -- optional: slimmer tabs on mobile
-            -- tabsBar.Size = UDim2.new(0, 130, 1, -titleBarH)
-        else
-            -- keep cfg.Size or default
-            root.Size = cfg.Size or UDim2.fromOffset(600, 440)
-        end
-    end
-
-    -- ===== Global UI Toggle Key + reopen hint =====
-    local uiToggleKey: Enum.KeyCode = cfg.ToggleKey or Enum.KeyCode.RightShift
-    -- (existing hint code remains)
-
-    -- 2) Touch “Open Menu” button (appears under the hint)
-    local touchOpenBtn = create("TextButton", {
-        Name = "TouchOpen",
-        Visible = false,
-        BackgroundColor3 = theme.buttonBase,
-        BorderSizePixel = 0,
-        AutoButtonColor = false,
-        Text = "Open Menu",
-        TextColor3 = theme.text,
-        Font = Enum.Font.GothamBold,
-        TextSize = 14,
-        Size = UDim2.fromOffset(160, 30),
-        AnchorPoint = Vector2.new(0.5, 0),
-        Position = UDim2.new(0.5, 0, 0, 40), -- just below the hint
-        ZIndex = 301,
-        Parent = gui,
-    })
-    makeRounded(touchOpenBtn, 8)
-    create("UIStroke", { Parent = touchOpenBtn, Color = theme.stroke, Transparency = 0.15 })
-
-    local function placeTouchOpenUnderHint()
-        if not (hint.Visible and touchOpenBtn.Visible) then return end
-        local hx, hy = hint.AbsolutePosition.X, hint.AbsolutePosition.Y
-        local hw, hh = hint.AbsoluteSize.X, hint.AbsoluteSize.Y
-        local centerX = hx + hw/2
-        touchOpenBtn.Position = UDim2.fromOffset(math.floor(centerX), math.floor(hy + hh + 8))
-    end
-
-    touchOpenBtn.MouseButton1Click:Connect(function()
-        root.Visible = true
-    end)
-
-    -- show/hide logic for hint + touch button
-    local function refreshTouchOpen()
-        local showTouch = isTouch and (not root.Visible)
-        touchOpenBtn.Visible = showTouch
-        if showTouch then placeTouchOpenUnderHint() end
-    end
-
-    -- keep your existing showHint/hideHint, and add:
-    root:GetPropertyChangedSignal("Visible"):Connect(function()
-        if root.Visible then hideHint() else showHint() end
-        refreshTouchOpen()
-    end)
-    UISg.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then
-            placeTouchOpenUnderHint()
-        end
-    end)
-
-    -- also call once after constructing:
-    task.defer(function()
-        refreshTouchOpen()
-    end)
-
 
     -- ===== Top Banner (outside window, draggable) =====
     local bannerH = 30
@@ -220,28 +149,101 @@ function EclipseUI:CreateWindow(cfg)
             root.Visible = not root.Visible
         end
     end)
+
+    -- Touch-only "Open Menu" button under the hint
+    local touchOpenBtn = create("TextButton", {
+        Name = "TouchOpen",
+        Visible = false,
+        BackgroundColor3 = theme.buttonBase,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Text = "Open Menu",
+        TextColor3 = theme.text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        Size = UDim2.fromOffset(160, 30),
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.new(0.5, 0, 0, 40),
+        ZIndex = 301,
+        Parent = gui,
+    })
+    makeRounded(touchOpenBtn, 8)
+    create("UIStroke", { Parent = touchOpenBtn, Color = theme.stroke, Transparency = 0.15 })
+    local function placeTouchOpenUnderHint()
+        if not (hint.Visible and touchOpenBtn.Visible) then return end
+        local hx, hy = hint.AbsolutePosition.X, hint.AbsolutePosition.Y
+        local hw, hh = hint.AbsoluteSize.X, hint.AbsoluteSize.Y
+        local centerX = hx + hw/2
+        touchOpenBtn.Position = UDim2.fromOffset(math.floor(centerX + 0.5), math.floor(hy + hh + 8 + 0.5))
+    end
+    touchOpenBtn.MouseButton1Click:Connect(function()
+        root.Visible = true
+    end)
+    local function refreshTouchOpen()
+        local showTouch = UISg.TouchEnabled and (not root.Visible)
+        touchOpenBtn.Visible = showTouch
+        if showTouch then placeTouchOpenUnderHint() end
+    end
+
     root:GetPropertyChangedSignal("Visible"):Connect(function()
         if root.Visible then hideHint() else showHint() end
+        refreshTouchOpen()
     end)
 
-    -- Dragging (title + banner)
+    UISg.InputChanged:Connect(function(input)
+        if hint.Visible and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            placeTouchOpenUnderHint()
+        end
+    end)
+    task.defer(refreshTouchOpen)
+
+    -- Dragging (title + banner) — supports mouse and touch
     do
-        local dragging, dragStart, startPos = false, Vector2.new(), root.Position
-        local function attachDrag(handle: GuiObject)
-            handle.InputBegan:Connect(function(input)
-                if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=true; dragStart=input.Position; startPos=root.Position end
+        local dragging = false
+        local dragStart = Vector2.new()
+        local startPos = root.Position
+
+        local function beginDrag(input)
+            dragging = true
+            dragStart = input.Position
+            startPos = root.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
             end)
         end
-        attachDrag(titleBar); attachDrag(banner)
+
+        local function attachDrag(handle: GuiObject)
+            handle.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                    beginDrag(input)
+                end
+            end)
+        end
+
+        attachDrag(titleBar)
+        attachDrag(banner)
+
         UISg.InputChanged:Connect(function(input)
-            if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then
-                local d = input.Position - dragStart
-                root.Position = UDim2.new(startPos.X.Scale, math.floor(startPos.X.Offset + d.X + 0.5), startPos.Y.Scale, math.floor(startPos.Y.Offset + d.Y + 0.5))
+            if not dragging then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+                return
             end
+            local delta = input.Position - dragStart
+            root.Position = UDim2.new(
+                startPos.X.Scale, math.floor(startPos.X.Offset + delta.X + 0.5),
+                startPos.Y.Scale, math.floor(startPos.Y.Offset + delta.Y + 0.5)
+            )
         end)
-        UISg.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end)
-        miniBtn.MouseButton1Click:Connect(function() root.Visible = not root.Visible end)
-        closeBtn.MouseButton1Click:Connect(function() if toggleConn then toggleConn:Disconnect() end gui:Destroy() end)
+
+        miniBtn.MouseButton1Click:Connect(function()
+            root.Visible = not root.Visible
+        end)
+        closeBtn.MouseButton1Click:Connect(function()
+            if toggleConn then toggleConn:Disconnect() end
+            gui:Destroy()
+        end)
     end
 
     local tabsBar = create("Frame", { Size = UDim2.new(0,160,1,-titleBarH), Position = UDim2.new(0,0,0,titleBarH), BackgroundColor3 = theme.panel, BorderSizePixel = 0, Parent = root })
@@ -383,7 +385,6 @@ function EclipseUI:CreateWindow(cfg)
 
         return holder, row
     end
-
 
     function EclipseUI:AddTab(name: string)
         name = tostring(name)
@@ -543,7 +544,7 @@ function EclipseUI:CreateWindow(cfg)
                 return { Set=function(_,txt) box.Text=tostring(txt or "") end, Get=function() return box.Text end, Instance=box }
             end
 
-            -- DROPDOWN (header: label left, value chip right)
+            -- DROPDOWN
             function section:AddDropdown(cfg)
                 cfg = cfg or {}
                 local options = table.clone(cfg.options or {"A","B","C"})
