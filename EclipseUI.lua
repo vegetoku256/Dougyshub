@@ -481,13 +481,39 @@ function EclipseUI:CreateWindow(cfg)
                     local rel = math.clamp((x - bar.AbsolutePosition.X)/math.max(1,bar.AbsoluteSize.X),0,1)
                     set(min + (max-min)*rel)
                 end
+                local function isPointer(input)
+                    return input.UserInputType == Enum.UserInputType.MouseButton1
+                        or input.UserInputType == Enum.UserInputType.Touch
+                end
+                local function isPointerMove(input)
+                    return input.UserInputType == Enum.UserInputType.MouseMovement
+                        or input.UserInputType == Enum.UserInputType.Touch
+                end
+
                 bar.InputBegan:Connect(function(input)
-                    if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging = true; updateFromX(input.Position.X) end
+                    if isPointer(input) then
+                        dragging = true
+                        updateFromX(input.Position.X)
+                        -- end drag when this pointer ends
+                        input.Changed:Connect(function()
+                            if input.UserInputState == Enum.UserInputState.End then
+                                dragging = false
+                            end
+                        end)
+                    end
                 end)
+
                 UISg.InputChanged:Connect(function(input)
-                    if dragging and input.UserInputType==Enum.UserInputType.MouseMovement then updateFromX(input.Position.X) end
+                    if dragging and isPointerMove(input) then
+                        updateFromX(input.Position.X)
+                    end
                 end)
-                UISg.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end)
+
+                UISg.InputEnded:Connect(function(input)
+                    if isPointer(input) then
+                        dragging = false
+                    end
+                end)
                 return { Set=function(_,v) set(tonumber(v) or val) end, Get=function() return val end }
             end
 
