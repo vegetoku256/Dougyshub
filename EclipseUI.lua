@@ -1,5 +1,5 @@
--- EclipseUI.lua — mobile-friendly + touch sliders
--- No Luau type annotations (Lua 5.1 friendly)
+-- EclipseUI.lua — mobile-friendly + touch sliders + hint/button anchored to window
+-- Pure Lua 5.1 (no Luau type annotations)
 
 local EclipseUI = {}
 EclipseUI.__index = EclipseUI
@@ -188,8 +188,35 @@ function EclipseUI:CreateWindow(cfg)
     updateHintText()
     accent_sub(function(c) hintStroke.Color = c end)
 
+    -- Touch "Open Menu" button under the hint
+    local touchOpenBtn = create("TextButton", {
+        Name="TouchOpen", Visible=false, BackgroundColor3=theme.buttonBase, BorderSizePixel=0, AutoButtonColor=false,
+        Text="Open Menu", TextColor3=theme.text, Font=Enum.Font.GothamBold, TextSize=14,
+        Size=UDim2.fromOffset(160,30), AnchorPoint=Vector2.new(0.5,0), Position=UDim2.new(0.5,0,0,40), ZIndex=301, Parent=gui
+    })
+    makeRounded(touchOpenBtn,8); create("UIStroke",{Parent=touchOpenBtn,Color=theme.stroke,Transparency=0.15})
+    touchOpenBtn.MouseButton1Click:Connect(function() root.Visible = true end)
+
+    -- Place the hint above the window and the button right under it (relative to window)
+    local function placeHintAndButton()
+        if not hint then return end
+        local rx, ry = root.AbsolutePosition.X, root.AbsolutePosition.Y
+        local rw = root.AbsoluteSize.X
+        -- place hint centered, 6px above top edge of window
+        hint.Position = UDim2.fromOffset(math.floor(rx + rw * 0.5 + 0.5), math.floor(ry - hint.AbsoluteSize.Y - 6))
+        if touchOpenBtn and touchOpenBtn.Visible then
+            local hy = hint.AbsolutePosition.Y + hint.AbsoluteSize.Y
+            touchOpenBtn.Position = UDim2.fromOffset(
+                math.floor(rx + rw * 0.5 + 0.5),
+                math.floor(hy + 8 + 0.5)
+            )
+        end
+    end
+
     local function showHint()
-        updateHintText(); hint.Visible = true
+        updateHintText()
+        hint.Visible = true
+        placeHintAndButton()
         hint.BackgroundTransparency = 1; hintText.TextTransparency = 1; hintStroke.Transparency = 1
         TweenService:Create(hint, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
         TweenService:Create(hintText, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
@@ -203,27 +230,6 @@ function EclipseUI:CreateWindow(cfg)
         task.delay(0.13,function() if hint then hint.Visible=false end end)
     end
 
-    -- Touch "Open Menu" button under the hint
-    local touchOpenBtn = create("TextButton", {
-        Name="TouchOpen", Visible=false, BackgroundColor3=theme.buttonBase, BorderSizePixel=0, AutoButtonColor=false,
-        Text="Open Menu", TextColor3=theme.text, Font=Enum.Font.GothamBold, TextSize=14,
-        Size=UDim2.fromOffset(160,30), AnchorPoint=Vector2.new(0.5,0), Position=UDim2.new(0.5,0,0,40), ZIndex=301, Parent=gui
-    })
-    makeRounded(touchOpenBtn,8); create("UIStroke",{Parent=touchOpenBtn,Color=theme.stroke,Transparency=0.15})
-    local function placeTouchOpenUnderHint()
-        if not (hint.Visible and touchOpenBtn.Visible) then return end
-        local hx, hy = hint.AbsolutePosition.X, hint.AbsolutePosition.Y
-        local hw, hh = hint.AbsoluteSize.X, hint.AbsoluteSize.Y
-        local cx = hx + hw/2
-        touchOpenBtn.Position = UDim2.fromOffset(math.floor(cx+0.5), math.floor(hy + hh + 8 + 0.5))
-    end
-    touchOpenBtn.MouseButton1Click:Connect(function() root.Visible = true end)
-    local function refreshTouchOpen()
-        local show = UIS.TouchEnabled and (not root.Visible)
-        touchOpenBtn.Visible = show
-        if show then placeTouchOpenUnderHint() end
-    end
-
     -- Toggle key listener
     local toggleConn = UIS.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == uiToggleKey then
@@ -231,13 +237,22 @@ function EclipseUI:CreateWindow(cfg)
         end
     end)
 
+    -- Show/hide logic and keep elements stuck to the window
+    local function refreshTouchOpen()
+        local show = UIS.TouchEnabled and (not root.Visible)
+        touchOpenBtn.Visible = show
+        placeHintAndButton()
+    end
     root:GetPropertyChangedSignal("Visible"):Connect(function()
         if root.Visible then hideHint() else showHint() end
         refreshTouchOpen()
     end)
+    root:GetPropertyChangedSignal("AbsolutePosition"):Connect(placeHintAndButton)
+    root:GetPropertyChangedSignal("AbsoluteSize"):Connect(placeHintAndButton)
+    RunService.RenderStepped:Connect(placeHintAndButton)
     UIS.InputChanged:Connect(function(input)
-        if hint.Visible and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            placeTouchOpenUnderHint()
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement then
+            placeHintAndButton()
         end
     end)
     task.defer(refreshTouchOpen)
@@ -464,7 +479,6 @@ function EclipseUI:CreateWindow(cfg)
                 accent_sub(function(c) fill.BackgroundColor3 = c end)
 
                 local dragging = false
-                local pointerId = nil
 
                 local function set(v, silent)
                     v = math.clamp(v, min, max)
@@ -495,12 +509,10 @@ function EclipseUI:CreateWindow(cfg)
 
                 local function beginDrag(input)
                     dragging = true
-                    pointerId = input
                     updateFromX(input.Position.X)
                     input.Changed:Connect(function()
                         if input.UserInputState == Enum.UserInputState.End then
                             dragging = false
-                            pointerId = nil
                         end
                     end)
                 end
@@ -518,7 +530,7 @@ function EclipseUI:CreateWindow(cfg)
                     end
                 end)
                 UIS.InputEnded:Connect(function(input)
-                    if isPointer(input) then dragging = false; pointerId=nil end
+                    if isPointer(input) then dragging = false end
                 end)
 
                 return { Set=function(_,v) set(tonumber(v) or val) end, Get=function() return val end }
@@ -573,7 +585,7 @@ function EclipseUI:CreateWindow(cfg)
                 return { Set=function(_,t) box.Text=tostring(t or "") end, Get=function() return box.Text end, Instance=box }
             end
 
-            -- Dropdown (unchanged core)
+            -- Dropdown
             function section:AddDropdown(cfgd)
                 cfgd = cfgd or {}
                 local options = table.clone(cfgd.options or {"A","B","C"})
