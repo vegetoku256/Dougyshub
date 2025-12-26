@@ -45,7 +45,7 @@ local SavedSettings = {
     notifyPosition = "TopRight",
     fpsCap = 60,
     toggleKey = "RightShift",
-    uiScale = 1.0,
+    -- Note: uiScale is NOT saved to prevent off-screen issues on reload
 }
 
 local function canSaveFiles()
@@ -336,9 +336,6 @@ function EclipseUI:CreateWindow(cfg)
     local toggleKey = stringToKeycode(SavedSettings.toggleKey) or cfg.ToggleKey or Enum.KeyCode.RightShift
     local notifyPosition = SavedSettings.notifyPosition or cfg.NotifyPosition or "TopRight"
     local overlayOpacity = cfg.OverlayOpacity or 0.4
-    
-    -- Apply saved UI scale
-    Config.uiScale = SavedSettings.uiScale or 1.0
     
     -- Main ScreenGui
     local gui = create("ScreenGui", {
@@ -668,13 +665,21 @@ function EclipseUI:CreateWindow(cfg)
             Parent = notif, 
             PaddingTop = UDim.new(0, 10), 
             PaddingBottom = UDim.new(0, 10), 
-            PaddingLeft = UDim.new(0, 18),
+            PaddingLeft = UDim.new(0, 16),
             PaddingRight = UDim.new(0, 12) 
+        })
+        
+        -- Position text after the accent bar
+        local notifTextOffset = create("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 1, 0),
+            Position = UDim2.fromOffset(6, 0),
+            Parent = notif
         })
         
         local notifLabel = create("TextLabel", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, -24, 0, 0),
+            Size = UDim2.new(1, -30, 0, 0),
             AutomaticSize = Enum.AutomaticSize.Y,
             Position = UDim2.fromOffset(0, 0),
             Text = tostring(text),
@@ -683,13 +688,13 @@ function EclipseUI:CreateWindow(cfg)
             TextSize = 14,
             TextWrapped = true,
             TextXAlignment = Enum.TextXAlignment.Left,
-            Parent = notif
+            Parent = notifTextOffset
         })
         
         local closeBtnNotif = create("TextButton", {
             BackgroundTransparency = 1,
             Size = UDim2.fromOffset(20, 20),
-            Position = UDim2.new(1, -20, 0, 0),
+            Position = UDim2.new(1, -14, 0, 0),
             Text = "x",
             TextColor3 = theme.textDim,
             Font = Enum.Font.GothamBold,
@@ -774,8 +779,11 @@ function EclipseUI:CreateWindow(cfg)
     function window:SetScale(scale)
         Config.uiScale = math.clamp(scale, 0.8, 1.3)
         uiScaleObj.Scale = Config.uiScale
-        SavedSettings.uiScale = Config.uiScale
-        saveSettings()
+        -- Note: Scale is intentionally NOT saved to prevent off-screen issues
+    end
+    
+    function window:GetScale()
+        return Config.uiScale
     end
     
     --=========================================================================
@@ -1657,20 +1665,95 @@ function EclipseUI:CreateWindow(cfg)
     --=========================================================================
     local settingsPanel = window:AddPanel("Settings", UDim2.new(1, -240, 0, 15))
     
-    -- UI Scale slider (reduced range)
-    settingsPanel:AddSlider({
-        text = "UI Scale",
-        min = 0.8,
-        max = 1.3,
-        step = 0.05,
-        default = Config.uiScale,
-        rounding = 2,
-        suffix = "x",
-        tooltip = "Scale the UI size (0.8x - 1.3x)",
-        callback = function(v)
-            window:SetScale(v)
+    -- UI Scale control with +/- buttons
+    do
+        local scaleRow = create("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 4),
+            Parent = settingsPanel.Content
+        })
+        
+        local scaleLabel = create("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0.4, 0, 1, 0),
+            Text = "UI Scale",
+            TextColor3 = theme.text,
+            Font = Enum.Font.Gotham,
+            TextSize = scaled(12),
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = scaleRow
+        })
+        
+        local minusBtn = create("TextButton", {
+            BackgroundColor3 = theme.panelHeader,
+            BorderSizePixel = 0,
+            Size = UDim2.fromOffset(28, 24),
+            Position = UDim2.new(0.42, 0, 0.5, -12),
+            Text = "-",
+            TextColor3 = theme.text,
+            Font = Enum.Font.GothamBold,
+            TextSize = 16,
+            Parent = scaleRow
+        })
+        makeRounded(minusBtn, 4)
+        trackHover(minusBtn, theme.panelHeader, theme.hover)
+        
+        local scaleDisplay = create("TextLabel", {
+            BackgroundColor3 = theme.bg,
+            BorderSizePixel = 0,
+            Size = UDim2.fromOffset(50, 24),
+            Position = UDim2.new(0.42, 32, 0.5, -12),
+            Text = string.format("%.2fx", Config.uiScale),
+            TextColor3 = theme.accent,
+            Font = Enum.Font.GothamBold,
+            TextSize = 12,
+            Parent = scaleRow
+        })
+        makeRounded(scaleDisplay, 4)
+        
+        local plusBtn = create("TextButton", {
+            BackgroundColor3 = theme.panelHeader,
+            BorderSizePixel = 0,
+            Size = UDim2.fromOffset(28, 24),
+            Position = UDim2.new(0.42, 86, 0.5, -12),
+            Text = "+",
+            TextColor3 = theme.text,
+            Font = Enum.Font.GothamBold,
+            TextSize = 16,
+            Parent = scaleRow
+        })
+        makeRounded(plusBtn, 4)
+        trackHover(plusBtn, theme.panelHeader, theme.hover)
+        
+        local function updateScaleDisplay()
+            scaleDisplay.Text = string.format("%.2fx", Config.uiScale)
         end
-    })
+        
+        minusBtn.MouseButton1Click:Connect(function()
+            local newScale = math.max(0.8, Config.uiScale - 0.05)
+            window:SetScale(newScale)
+            updateScaleDisplay()
+        end)
+        
+        plusBtn.MouseButton1Click:Connect(function()
+            local newScale = math.min(1.3, Config.uiScale + 0.05)
+            window:SetScale(newScale)
+            updateScaleDisplay()
+        end)
+        
+        attachTooltip(scaleRow, "Adjust UI size with +/- buttons (0.8x - 1.3x)")
+        
+        -- Theme subscriber
+        subscribeTheme(function(t)
+            scaleLabel.TextColor3 = t.text
+            scaleDisplay.BackgroundColor3 = t.bg
+            scaleDisplay.TextColor3 = t.accent
+            updateHoverColors(minusBtn, t.panelHeader, t.hover)
+            updateHoverColors(plusBtn, t.panelHeader, t.hover)
+            minusBtn.TextColor3 = t.text
+            plusBtn.TextColor3 = t.text
+        end)
+    end
     
     settingsPanel:AddDivider()
     
