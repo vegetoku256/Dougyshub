@@ -1,6 +1,7 @@
--- EclipseUI v2.2 — Minecraft Hack Client Style (Wurst-inspired)
+-- EclipseUI v2.3 — Minecraft Hack Client Style (Wurst-inspired)
 -- Pure Lua 5.1 (no Luau type annotations)
 -- Mobile-friendly with touch support + Settings saving
+-- Features: ArrayList, Multi-Select, Search, Blur, Splash, Chat Hide, Snapping, Changelog, Debug
 
 local EclipseUI = {}
 EclipseUI.__index = EclipseUI
@@ -15,6 +16,8 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local HttpService = game:GetService("HttpService")
+local GuiService = game:GetService("GuiService")
+local StarterGui = game:GetService("StarterGui")
 local Player = Players.LocalPlayer
 
 --=============================================================================
@@ -35,6 +38,8 @@ local Config = {
     uiScale = 1.0,
     baseTextSize = 14,
     saveFileName = "EclipseUI_Settings.json",
+    snapDistance = 15, -- Distance for panel snapping
+    debugMode = false,
 }
 
 --=============================================================================
@@ -45,8 +50,45 @@ local SavedSettings = {
     notifyPosition = "TopRight",
     fpsCap = 60,
     toggleKey = "RightShift",
+    debugMode = false,
+    arrayListPosition = "Right",
     -- Note: uiScale is NOT saved to prevent off-screen issues on reload
 }
+
+--=============================================================================
+-- GLOBAL STATE FOR ARRAYLIST (tracks all enabled toggles)
+--=============================================================================
+local ActiveModules = {} -- { [name] = true/false }
+local ArrayListSubscribers = {}
+
+local function notifyArrayList()
+    for _, fn in ipairs(ArrayListSubscribers) do
+        pcall(fn, ActiveModules)
+    end
+end
+
+local function setModuleActive(name, active)
+    if active then
+        ActiveModules[name] = true
+    else
+        ActiveModules[name] = nil
+    end
+    notifyArrayList()
+end
+
+--=============================================================================
+-- DEBUG LOG
+--=============================================================================
+local DebugLogs = {}
+local DebugSubscribers = {}
+
+local function debugLog(msg)
+    if not Config.debugMode then return end
+    local entry = "[" .. os.date("%H:%M:%S") .. "] " .. tostring(msg)
+    table.insert(DebugLogs, entry)
+    if #DebugLogs > 100 then table.remove(DebugLogs, 1) end
+    for _, fn in ipairs(DebugSubscribers) do pcall(fn, entry) end
+end
 
 local function canSaveFiles()
     return writefile and readfile and isfile
@@ -337,6 +379,20 @@ function EclipseUI:CreateWindow(cfg)
     local notifyPosition = SavedSettings.notifyPosition or cfg.NotifyPosition or "TopRight"
     local overlayOpacity = cfg.OverlayOpacity or 0.4
     
+    -- New config options
+    local showSearchBar = cfg.SearchBar ~= false -- Default: true, set SearchBar = false to disable
+    local showArrayList = cfg.ArrayList ~= false -- Default: true
+    local showSplash = cfg.SplashScreen ~= false -- Default: true
+    local enableBlur = cfg.BlurEffect ~= false -- Default: true
+    local enableSnapping = cfg.PanelSnapping ~= false -- Default: true
+    local autoHideOnChat = cfg.AutoHideOnChat ~= false -- Default: true
+    local splashTitle = cfg.SplashTitle or "EclipseUI"
+    local splashSubtitle = cfg.SplashSubtitle or "Loading..."
+    
+    Config.debugMode = SavedSettings.debugMode or false
+    
+    debugLog("CreateWindow called with config")
+    
     -- Main ScreenGui
     local gui = create("ScreenGui", {
         Name = "EclipseUI_v2",
@@ -346,6 +402,96 @@ function EclipseUI:CreateWindow(cfg)
         DisplayOrder = 999999,
         Parent = CoreGui
     })
+    
+    --=========================================================================
+    -- SPLASH SCREEN
+    --=========================================================================
+    local splashGui
+    if showSplash then
+        splashGui = create("Frame", {
+            Name = "SplashScreen",
+            Size = UDim2.fromScale(1, 1),
+            BackgroundColor3 = Color3.fromRGB(10, 10, 15),
+            BackgroundTransparency = 0,
+            BorderSizePixel = 0,
+            ZIndex = 9999,
+            Parent = gui
+        })
+        
+        local splashCenter = create("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromOffset(300, 150),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromScale(0.5, 0.5),
+            Parent = splashGui
+        })
+        
+        local splashTitleLabel = create("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 50),
+            Text = splashTitle,
+            TextColor3 = theme.accent,
+            Font = Enum.Font.GothamBold,
+            TextSize = 36,
+            TextTransparency = 1,
+            Parent = splashCenter
+        })
+        
+        local splashSubLabel = create("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 24),
+            Position = UDim2.fromOffset(0, 55),
+            Text = splashSubtitle,
+            TextColor3 = theme.textDim,
+            Font = Enum.Font.Gotham,
+            TextSize = 16,
+            TextTransparency = 1,
+            Parent = splashCenter
+        })
+        
+        local splashBar = create("Frame", {
+            BackgroundColor3 = theme.panel,
+            BorderSizePixel = 0,
+            Size = UDim2.new(0.8, 0, 0, 6),
+            Position = UDim2.new(0.1, 0, 0, 95),
+            Parent = splashCenter
+        })
+        makeRounded(splashBar, 3)
+        
+        local splashProgress = create("Frame", {
+            BackgroundColor3 = theme.accent,
+            BorderSizePixel = 0,
+            Size = UDim2.new(0, 0, 1, 0),
+            Parent = splashBar
+        })
+        makeRounded(splashProgress, 3)
+        
+        -- Animate splash
+        task.spawn(function()
+            tween(splashTitleLabel, { TextTransparency = 0 }, 0.3)
+            task.wait(0.15)
+            tween(splashSubLabel, { TextTransparency = 0 }, 0.3)
+            task.wait(0.1)
+            tween(splashProgress, { Size = UDim2.new(1, 0, 1, 0) }, 0.8, Enum.EasingStyle.Quad)
+            task.wait(1)
+            tween(splashGui, { BackgroundTransparency = 1 }, 0.3)
+            tween(splashTitleLabel, { TextTransparency = 1 }, 0.25)
+            tween(splashSubLabel, { TextTransparency = 1 }, 0.25)
+            task.wait(0.35)
+            if splashGui then splashGui:Destroy() end
+        end)
+    end
+    
+    --=========================================================================
+    -- BLUR EFFECT
+    --=========================================================================
+    local blurEffect
+    if enableBlur then
+        blurEffect = Instance.new("BlurEffect")
+        blurEffect.Name = "EclipseUIBlur"
+        blurEffect.Size = 0
+        blurEffect.Parent = game:GetService("Lighting")
+    end
     
     -- Dark overlay background (when menu is open)
     local overlay = create("Frame", {
@@ -404,6 +550,241 @@ function EclipseUI:CreateWindow(cfg)
         VerticalAlignment = notifyPosition:find("Bottom") and Enum.VerticalAlignment.Bottom or Enum.VerticalAlignment.Top,
         HorizontalAlignment = notifyPosition:find("Left") and Enum.HorizontalAlignment.Left or Enum.HorizontalAlignment.Right
     })
+    
+    --=========================================================================
+    -- ARRAY LIST (shows enabled modules when menu is hidden)
+    --=========================================================================
+    local arrayList = create("Frame", {
+        Name = "ArrayList",
+        BackgroundTransparency = 1,
+        Size = UDim2.fromOffset(200, 400),
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -10, 0, 60),
+        Visible = false,
+        ZIndex = 50,
+        Parent = gui
+    })
+    
+    create("UIListLayout", {
+        Parent = arrayList,
+        SortOrder = Enum.SortOrder.Name,
+        Padding = UDim.new(0, 2),
+        HorizontalAlignment = Enum.HorizontalAlignment.Right
+    })
+    
+    local arrayListLabels = {}
+    
+    local function updateArrayList()
+        -- Clear existing
+        for _, label in pairs(arrayListLabels) do
+            if label and label.Parent then label:Destroy() end
+        end
+        arrayListLabels = {}
+        
+        -- Create sorted list of active modules
+        local sorted = {}
+        for name, _ in pairs(ActiveModules) do
+            table.insert(sorted, name)
+        end
+        table.sort(sorted, function(a, b) return #a > #b end) -- Sort by length (longest first)
+        
+        for i, name in ipairs(sorted) do
+            local sz = getTextSize(name, 14, Enum.Font.GothamBold)
+            local label = create("Frame", {
+                Name = name,
+                BackgroundColor3 = theme.panel,
+                BackgroundTransparency = 0.3,
+                BorderSizePixel = 0,
+                Size = UDim2.fromOffset(sz.X + 16, 22),
+                LayoutOrder = i,
+                Parent = arrayList
+            })
+            makeRounded(label, 4)
+            
+            -- Accent bar on right
+            create("Frame", {
+                BackgroundColor3 = theme.accent,
+                BorderSizePixel = 0,
+                Size = UDim2.new(0, 3, 1, 0),
+                Position = UDim2.new(1, -3, 0, 0),
+                Parent = label
+            })
+            
+            create("TextLabel", {
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, -8, 1, 0),
+                Position = UDim2.fromOffset(6, 0),
+                Text = name,
+                TextColor3 = theme.text,
+                Font = Enum.Font.GothamBold,
+                TextSize = 14,
+                TextXAlignment = Enum.TextXAlignment.Right,
+                Parent = label
+            })
+            
+            arrayListLabels[name] = label
+        end
+    end
+    
+    table.insert(ArrayListSubscribers, updateArrayList)
+    
+    --=========================================================================
+    -- GLOBAL SEARCH BAR
+    --=========================================================================
+    local searchBarFrame, searchInput, searchResults
+    local allModules = {} -- Store references to all modules for searching
+    
+    if showSearchBar then
+        searchBarFrame = create("Frame", {
+            Name = "SearchBar",
+            BackgroundColor3 = theme.panel,
+            BackgroundTransparency = 0.1,
+            BorderSizePixel = 0,
+            Size = UDim2.fromOffset(300, 36),
+            AnchorPoint = Vector2.new(0.5, 0),
+            Position = UDim2.new(0.5, 0, 0, 10),
+            ZIndex = 500,
+            Visible = true,
+            Parent = panelContainer
+        })
+        makeRounded(searchBarFrame, 8)
+        makeStroke(searchBarFrame, theme.accent, 1)
+        
+        local searchIcon = create("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromOffset(30, 36),
+            Text = "?",
+            TextColor3 = theme.textDim,
+            Font = Enum.Font.GothamBold,
+            TextSize = 16,
+            Parent = searchBarFrame
+        })
+        
+        searchInput = create("TextBox", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -40, 1, 0),
+            Position = UDim2.fromOffset(30, 0),
+            Text = "",
+            PlaceholderText = "Search modules...",
+            TextColor3 = theme.text,
+            PlaceholderColor3 = theme.textDim,
+            Font = Enum.Font.Gotham,
+            TextSize = 14,
+            ClearTextOnFocus = false,
+            Parent = searchBarFrame
+        })
+        
+        searchResults = create("Frame", {
+            Name = "SearchResults",
+            BackgroundColor3 = theme.panel,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 0, 0),
+            Position = UDim2.fromOffset(0, 40),
+            ClipsDescendants = true,
+            Visible = false,
+            ZIndex = 501,
+            Parent = searchBarFrame
+        })
+        makeRounded(searchResults, 6)
+        makeStroke(searchResults, theme.stroke)
+        
+        create("UIListLayout", {
+            Parent = searchResults,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Padding = UDim.new(0, 2)
+        })
+        
+        create("UIPadding", {
+            Parent = searchResults,
+            PaddingTop = UDim.new(0, 4),
+            PaddingBottom = UDim.new(0, 4),
+            PaddingLeft = UDim.new(0, 4),
+            PaddingRight = UDim.new(0, 4)
+        })
+        
+        local function performSearch(query)
+            -- Clear previous results
+            for _, child in ipairs(searchResults:GetChildren()) do
+                if child:IsA("TextButton") then child:Destroy() end
+            end
+            
+            if query == "" then
+                searchResults.Visible = false
+                return
+            end
+            
+            local matches = {}
+            local lowerQuery = string.lower(query)
+            
+            for _, mod in ipairs(allModules) do
+                if string.find(string.lower(mod.name), lowerQuery, 1, true) then
+                    table.insert(matches, mod)
+                end
+            end
+            
+            if #matches == 0 then
+                searchResults.Visible = false
+                return
+            end
+            
+            searchResults.Visible = true
+            local resultHeight = math.min(#matches * 28, 200)
+            searchResults.Size = UDim2.new(1, 0, 0, resultHeight + 8)
+            
+            for i, mod in ipairs(matches) do
+                if i > 7 then break end -- Max 7 results
+                local resultBtn = create("TextButton", {
+                    BackgroundColor3 = theme.bg,
+                    BorderSizePixel = 0,
+                    Size = UDim2.new(1, 0, 0, 26),
+                    Text = mod.name .. " [" .. mod.panel .. "]",
+                    TextColor3 = theme.text,
+                    Font = Enum.Font.Gotham,
+                    TextSize = 12,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    ZIndex = 502,
+                    Parent = searchResults
+                })
+                makeRounded(resultBtn, 4)
+                create("UIPadding", { Parent = resultBtn, PaddingLeft = UDim.new(0, 8) })
+                
+                trackHover(resultBtn, theme.bg, theme.hover)
+                
+                resultBtn.MouseButton1Click:Connect(function()
+                    searchInput.Text = ""
+                    searchResults.Visible = false
+                    if mod.instance and mod.instance.Parent then
+                        -- Flash the module to show its location
+                        local orig = mod.row.BackgroundColor3
+                        for _ = 1, 3 do
+                            mod.row.BackgroundColor3 = theme.accent
+                            task.wait(0.15)
+                            mod.row.BackgroundColor3 = orig
+                            task.wait(0.15)
+                        end
+                    end
+                end)
+            end
+        end
+        
+        searchInput:GetPropertyChangedSignal("Text"):Connect(function()
+            performSearch(searchInput.Text)
+        end)
+        
+        searchInput.FocusLost:Connect(function()
+            task.delay(0.2, function()
+                if not searchInput:IsFocused() then
+                    searchResults.Visible = false
+                end
+            end)
+        end)
+    end
+    
+    --=========================================================================
+    -- CHANGELOG VIEWER
+    --=========================================================================
+    local changelogEntries = {}
+    local changelogFrame
     
     -- Tooltip
     local tooltip = create("Frame", {
@@ -589,12 +970,66 @@ function EclipseUI:CreateWindow(cfg)
         mobileOpenBtn.Visible = not visible and Config.isMobile
         updateToggleBtnAppearance()
         
+        -- Show/hide ArrayList (shows when menu is hidden)
+        if showArrayList then
+            arrayList.Visible = not visible
+        end
+        
         -- Animate overlay
         if visible then
             tween(overlay, { BackgroundTransparency = 1 - overlayOpacity }, 0.25)
+            if blurEffect then
+                tween(blurEffect, { Size = 8 }, 0.25)
+            end
         else
             tween(overlay, { BackgroundTransparency = 1 }, 0.2)
+            if blurEffect then
+                tween(blurEffect, { Size = 0 }, 0.2)
+            end
         end
+        
+        debugLog("UI visibility set to: " .. tostring(visible))
+    end
+    
+    --=========================================================================
+    -- AUTO-HIDE ON CHAT (lower DisplayOrder when chat is focused)
+    --=========================================================================
+    if autoHideOnChat then
+        local originalDisplayOrder = gui.DisplayOrder
+        
+        task.spawn(function()
+            while gui and gui.Parent do
+                local chatFocused = false
+                pcall(function()
+                    -- Check if player is typing in chat
+                    local chatBox = Player:WaitForChild("PlayerGui", 1)
+                    if chatBox then
+                        for _, desc in ipairs(chatBox:GetDescendants()) do
+                            if desc:IsA("TextBox") and desc:IsFocused() then
+                                chatFocused = true
+                                break
+                            end
+                        end
+                    end
+                end)
+                
+                -- Alternative: Check if any TextBox in the game is focused
+                if not chatFocused then
+                    local focused = UIS:GetFocusedTextBox()
+                    if focused and not focused:IsDescendantOf(gui) then
+                        chatFocused = true
+                    end
+                end
+                
+                if chatFocused then
+                    gui.DisplayOrder = 1
+                else
+                    gui.DisplayOrder = originalDisplayOrder
+                end
+                
+                task.wait(0.2)
+            end
+        end)
     end
     
     -- Toggle key listener
@@ -809,7 +1244,179 @@ function EclipseUI:CreateWindow(cfg)
         for _, conn in ipairs(window._connections) do
             if conn then pcall(function() conn:Disconnect() end) end
         end
+        if blurEffect then blurEffect:Destroy() end
         if gui then gui:Destroy() end
+        debugLog("Window destroyed")
+    end
+    
+    --=========================================================================
+    -- CHANGELOG METHODS
+    --=========================================================================
+    function window:AddChangelog(version, changes)
+        table.insert(changelogEntries, {
+            version = version,
+            changes = changes,
+            timestamp = os.date("%Y-%m-%d")
+        })
+        debugLog("Changelog entry added: " .. version)
+    end
+    
+    function window:ShowChangelog()
+        if changelogFrame then
+            changelogFrame.Visible = true
+            return
+        end
+        
+        changelogFrame = create("Frame", {
+            Name = "ChangelogViewer",
+            BackgroundColor3 = theme.bg,
+            BorderSizePixel = 0,
+            Size = UDim2.fromOffset(400, 350),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromScale(0.5, 0.5),
+            ZIndex = 800,
+            Parent = gui
+        })
+        makeRounded(changelogFrame, 10)
+        makeStroke(changelogFrame, theme.accent, 2)
+        
+        local changelogHeader = create("Frame", {
+            BackgroundColor3 = theme.panelHeader,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 0, 40),
+            Parent = changelogFrame
+        })
+        makeRounded(changelogHeader, 10)
+        
+        create("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -50, 1, 0),
+            Position = UDim2.fromOffset(15, 0),
+            Text = "Changelog",
+            TextColor3 = theme.accent,
+            Font = Enum.Font.GothamBold,
+            TextSize = 18,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = changelogHeader
+        })
+        
+        local closeBtn = create("TextButton", {
+            BackgroundTransparency = 1,
+            Size = UDim2.fromOffset(30, 30),
+            Position = UDim2.new(1, -35, 0.5, -15),
+            Text = "X",
+            TextColor3 = theme.text,
+            Font = Enum.Font.GothamBold,
+            TextSize = 16,
+            Parent = changelogHeader
+        })
+        closeBtn.MouseButton1Click:Connect(function()
+            changelogFrame.Visible = false
+        end)
+        
+        local changelogScroll = create("ScrollingFrame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -20, 1, -55),
+            Position = UDim2.fromOffset(10, 45),
+            ScrollBarThickness = 4,
+            ScrollBarImageColor3 = theme.accent,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            Parent = changelogFrame
+        })
+        
+        create("UIListLayout", {
+            Parent = changelogScroll,
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Padding = UDim.new(0, 15)
+        })
+        
+        -- Build changelog content
+        for i, entry in ipairs(changelogEntries) do
+            local entryFrame = create("Frame", {
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+                LayoutOrder = -i, -- Newest first
+                Parent = changelogScroll
+            })
+            
+            create("TextLabel", {
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 24),
+                Text = "v" .. entry.version .. " - " .. entry.timestamp,
+                TextColor3 = theme.accent,
+                Font = Enum.Font.GothamBold,
+                TextSize = 14,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Parent = entryFrame
+            })
+            
+            local changesText = create("TextLabel", {
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 0),
+                Position = UDim2.fromOffset(0, 26),
+                AutomaticSize = Enum.AutomaticSize.Y,
+                Text = entry.changes,
+                TextColor3 = theme.text,
+                Font = Enum.Font.Gotham,
+                TextSize = 12,
+                TextWrapped = true,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                RichText = true,
+                Parent = entryFrame
+            })
+        end
+        
+        if #changelogEntries == 0 then
+            create("TextLabel", {
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, 0, 0, 40),
+                Text = "No changelog entries yet",
+                TextColor3 = theme.textDim,
+                Font = Enum.Font.Gotham,
+                TextSize = 14,
+                Parent = changelogScroll
+            })
+        end
+    end
+    
+    function window:HideChangelog()
+        if changelogFrame then changelogFrame.Visible = false end
+    end
+    
+    --=========================================================================
+    -- DEBUG MODE
+    --=========================================================================
+    function window:SetDebugMode(enabled)
+        Config.debugMode = enabled
+        SavedSettings.debugMode = enabled
+        saveSettings()
+        debugLog("Debug mode " .. (enabled and "enabled" or "disabled"))
+    end
+    
+    function window:GetDebugLogs()
+        return DebugLogs
+    end
+    
+    --=========================================================================
+    -- ARRAY LIST METHODS
+    --=========================================================================
+    function window:SetArrayListPosition(pos)
+        -- pos: "Left" or "Right"
+        SavedSettings.arrayListPosition = pos
+        saveSettings()
+        if pos == "Left" then
+            arrayList.AnchorPoint = Vector2.new(0, 0)
+            arrayList.Position = UDim2.new(0, 10, 0, 60)
+            local layout = arrayList:FindFirstChildOfClass("UIListLayout")
+            if layout then layout.HorizontalAlignment = Enum.HorizontalAlignment.Left end
+        else
+            arrayList.AnchorPoint = Vector2.new(1, 0)
+            arrayList.Position = UDim2.new(1, -10, 0, 60)
+            local layout = arrayList:FindFirstChildOfClass("UIListLayout")
+            if layout then layout.HorizontalAlignment = Enum.HorizontalAlignment.Right end
+        end
     end
     
     --=========================================================================
@@ -910,7 +1517,7 @@ function EclipseUI:CreateWindow(cfg)
             end
         end)
         
-        -- Dragging with scale compensation
+        -- Dragging with scale compensation and SNAPPING
         local dragging, dragStart, startPos = false, Vector2.new(), panel.Position
         
         local function beginDrag(input)
@@ -922,6 +1529,56 @@ function EclipseUI:CreateWindow(cfg)
                     dragging = false
                 end
             end)
+        end
+        
+        local function getSnappedPosition(x, y)
+            if not enableSnapping then return x, y end
+            
+            local snapDist = Config.snapDistance
+            local screenSize = gui.AbsoluteSize / Config.uiScale
+            local panelSize = panel.AbsoluteSize / Config.uiScale
+            
+            -- Snap to screen edges
+            if x < snapDist then x = 0 end
+            if y < snapDist then y = 0 end
+            if x + panelSize.X > screenSize.X - snapDist then x = screenSize.X - panelSize.X end
+            if y + panelSize.Y > screenSize.Y - snapDist then y = screenSize.Y - panelSize.Y end
+            
+            -- Snap to other panels
+            for _, otherPanel in ipairs(window._panels) do
+                if otherPanel.Instance ~= panel then
+                    local other = otherPanel.Instance
+                    local otherPos = other.AbsolutePosition / Config.uiScale
+                    local otherSize = other.AbsoluteSize / Config.uiScale
+                    
+                    -- Snap left edge to right edge of other
+                    if math.abs(x - (otherPos.X + otherSize.X)) < snapDist then
+                        x = otherPos.X + otherSize.X + 5
+                    end
+                    -- Snap right edge to left edge of other
+                    if math.abs((x + panelSize.X) - otherPos.X) < snapDist then
+                        x = otherPos.X - panelSize.X - 5
+                    end
+                    -- Snap top edge to bottom edge of other
+                    if math.abs(y - (otherPos.Y + otherSize.Y)) < snapDist then
+                        y = otherPos.Y + otherSize.Y + 5
+                    end
+                    -- Snap bottom edge to top edge of other
+                    if math.abs((y + panelSize.Y) - otherPos.Y) < snapDist then
+                        y = otherPos.Y - panelSize.Y - 5
+                    end
+                    -- Align tops
+                    if math.abs(y - otherPos.Y) < snapDist then
+                        y = otherPos.Y
+                    end
+                    -- Align lefts
+                    if math.abs(x - otherPos.X) < snapDist then
+                        x = otherPos.X
+                    end
+                end
+            end
+            
+            return x, y
         end
         
         header.InputBegan:Connect(function(input)
@@ -936,9 +1593,15 @@ function EclipseUI:CreateWindow(cfg)
             local delta = input.Position - dragStart
             -- Divide delta by scale to compensate for UI scaling
             local scaledDelta = delta / Config.uiScale
+            local newX = startPos.X.Offset + scaledDelta.X
+            local newY = startPos.Y.Offset + scaledDelta.Y
+            
+            -- Apply snapping
+            newX, newY = getSnappedPosition(newX, newY)
+            
             panel.Position = UDim2.new(
-                startPos.X.Scale, math.floor(startPos.X.Offset + scaledDelta.X + 0.5),
-                startPos.Y.Scale, math.floor(startPos.Y.Offset + scaledDelta.Y + 0.5)
+                startPos.X.Scale, math.floor(newX + 0.5),
+                startPos.Y.Scale, math.floor(newY + 0.5)
             )
         end)
         table.insert(window._connections, dragConn)
@@ -1064,10 +1727,28 @@ function EclipseUI:CreateWindow(cfg)
                 moduleName.TextColor3 = enabled and theme.enabled or theme.disabled
             end
             
+            -- Function to toggle settings expansion
+            local function toggleExpand()
+                if not hasSettings then return end
+                expanded = not expanded
+                if expandBtn then expandBtn.Text = expanded and "v" or ">" end
+                settingsContainer.Visible = expanded
+                
+                if expanded then
+                    moduleHolder.AutomaticSize = Enum.AutomaticSize.Y
+                else
+                    moduleHolder.AutomaticSize = Enum.AutomaticSize.None
+                    moduleHolder.Size = UDim2.new(1, 0, 0, scaled(Config.moduleHeight))
+                end
+                debugLog("Module '" .. (cfg.name or "Module") .. "' expanded: " .. tostring(expanded))
+            end
+            
             if cfg.type == "toggle" or cfg.type == nil then
                 moduleBtn.MouseButton1Click:Connect(function()
                     enabled = not enabled
                     updateState()
+                    -- Update ArrayList
+                    setModuleActive(cfg.name or "Module", enabled)
                     if cfg.callback then
                         task.spawn(cfg.callback, enabled)
                     end
@@ -1090,20 +1771,27 @@ function EclipseUI:CreateWindow(cfg)
                 attachTooltip(moduleRow, cfg.tooltip)
             end
             
+            -- Expand button click
             if hasSettings and expandBtn then
-                expandBtn.MouseButton1Click:Connect(function()
-                    expanded = not expanded
-                    expandBtn.Text = expanded and "v" or ">"
-                    settingsContainer.Visible = expanded
-                    
-                    if expanded then
-                        moduleHolder.AutomaticSize = Enum.AutomaticSize.Y
-                    else
-                        moduleHolder.AutomaticSize = Enum.AutomaticSize.None
-                        moduleHolder.Size = UDim2.new(1, 0, 0, scaled(Config.moduleHeight))
+                expandBtn.MouseButton1Click:Connect(toggleExpand)
+            end
+            
+            -- RIGHT-CLICK to expand settings (alternative to arrow)
+            if hasSettings then
+                moduleRow.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                        toggleExpand()
                     end
                 end)
             end
+            
+            -- Track module for search
+            table.insert(allModules, {
+                name = cfg.name or "Module",
+                panel = name,
+                instance = moduleHolder,
+                row = moduleRow
+            })
             
             -- Theme subscriber - update hover colors
             subscribeTheme(function(t)
@@ -1482,12 +2170,42 @@ function EclipseUI:CreateWindow(cfg)
                     Parent = row
                 })
                 
+                local isMultiple = setting.multiple == true
+                local options = setting.options or {}
+                local selectedValues = {}
+                
+                -- Initialize selected values
+                if isMultiple then
+                    if setting.default and type(setting.default) == "table" then
+                        for _, v in ipairs(setting.default) do
+                            selectedValues[v] = true
+                        end
+                    end
+                else
+                    selectedValues = setting.default or options[1] or ""
+                end
+                
+                local function getDisplayText()
+                    if isMultiple then
+                        local selected = {}
+                        for opt, _ in pairs(selectedValues) do
+                            table.insert(selected, opt)
+                        end
+                        if #selected == 0 then return "None selected" end
+                        if #selected == 1 then return selected[1] end
+                        if #selected <= 2 then return table.concat(selected, ", ") end
+                        return #selected .. " selected"
+                    else
+                        return tostring(selectedValues)
+                    end
+                end
+                
                 local dropBtn = create("TextButton", {
                     BackgroundColor3 = theme.bg,
                     BorderSizePixel = 0,
                     Size = UDim2.new(0.58, 0, 0, scaled(Config.settingHeight) - 4),
                     Position = UDim2.new(0.42, 0, 0, 2),
-                    Text = (setting.default or setting.options[1] or "Select") .. " v",
+                    Text = getDisplayText() .. " v",
                     TextColor3 = theme.text,
                     Font = Enum.Font.Gotham,
                     TextSize = scaled(11),
@@ -1515,41 +2233,111 @@ function EclipseUI:CreateWindow(cfg)
                     Padding = UDim.new(0, 2)
                 })
                 
-                local options = setting.options or {}
-                local value = setting.default or options[1] or ""
                 local open = false
                 local optionButtons = {}
                 
+                local function updateOptionVisuals()
+                    for _, data in ipairs(optionButtons) do
+                        if isMultiple then
+                            local isSelected = selectedValues[data.opt] == true
+                            data.check.Text = isSelected and "[X]" or "[ ]"
+                            data.check.TextColor3 = isSelected and theme.accent or theme.textDim
+                        end
+                    end
+                    dropBtn.Text = getDisplayText() .. (open and " ^" or " v")
+                end
+                
                 local function buildOptions()
                     for _, child in ipairs(dropList:GetChildren()) do
-                        if child:IsA("TextButton") then child:Destroy() end
+                        if child:IsA("Frame") or child:IsA("TextButton") then child:Destroy() end
                     end
                     optionButtons = {}
                     
                     for _, opt in ipairs(options) do
-                        local optBtn = create("TextButton", {
-                            BackgroundColor3 = theme.panel,
-                            BorderSizePixel = 0,
-                            Size = UDim2.new(1, 0, 0, 22),
-                            Text = opt,
-                            TextColor3 = theme.text,
-                            Font = Enum.Font.Gotham,
-                            TextSize = scaled(11),
-                            ZIndex = 101,
-                            Parent = dropList
-                        })
-                        
-                        trackHover(optBtn, theme.panel, theme.hover)
-                        table.insert(optionButtons, optBtn)
-                        
-                        optBtn.MouseButton1Click:Connect(function()
-                            value = opt
-                            dropBtn.Text = value .. " v"
-                            open = false
-                            dropList.Visible = false
-                            row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight))
-                            if setting.callback then task.spawn(setting.callback, value) end
-                        end)
+                        if isMultiple then
+                            -- Multi-select: show checkbox style
+                            local optRow = create("Frame", {
+                                BackgroundColor3 = theme.panel,
+                                BorderSizePixel = 0,
+                                Size = UDim2.new(1, 0, 0, 24),
+                                ZIndex = 101,
+                                Parent = dropList
+                            })
+                            makeRounded(optRow, 2)
+                            trackHover(optRow, theme.panel, theme.hover)
+                            
+                            local check = create("TextLabel", {
+                                BackgroundTransparency = 1,
+                                Size = UDim2.fromOffset(28, 24),
+                                Text = selectedValues[opt] and "[X]" or "[ ]",
+                                TextColor3 = selectedValues[opt] and theme.accent or theme.textDim,
+                                Font = Enum.Font.GothamBold,
+                                TextSize = 10,
+                                ZIndex = 102,
+                                Parent = optRow
+                            })
+                            
+                            local optLabel = create("TextLabel", {
+                                BackgroundTransparency = 1,
+                                Size = UDim2.new(1, -30, 1, 0),
+                                Position = UDim2.fromOffset(28, 0),
+                                Text = opt,
+                                TextColor3 = theme.text,
+                                Font = Enum.Font.Gotham,
+                                TextSize = scaled(11),
+                                TextXAlignment = Enum.TextXAlignment.Left,
+                                ZIndex = 102,
+                                Parent = optRow
+                            })
+                            
+                            local clickBtn = create("TextButton", {
+                                BackgroundTransparency = 1,
+                                Size = UDim2.fromScale(1, 1),
+                                Text = "",
+                                ZIndex = 103,
+                                Parent = optRow
+                            })
+                            
+                            table.insert(optionButtons, { btn = optRow, check = check, opt = opt })
+                            
+                            clickBtn.MouseButton1Click:Connect(function()
+                                selectedValues[opt] = not selectedValues[opt]
+                                if not selectedValues[opt] then selectedValues[opt] = nil end
+                                updateOptionVisuals()
+                                if setting.callback then
+                                    local result = {}
+                                    for k, _ in pairs(selectedValues) do
+                                        table.insert(result, k)
+                                    end
+                                    task.spawn(setting.callback, result)
+                                end
+                            end)
+                        else
+                            -- Single select
+                            local optBtn = create("TextButton", {
+                                BackgroundColor3 = theme.panel,
+                                BorderSizePixel = 0,
+                                Size = UDim2.new(1, 0, 0, 22),
+                                Text = opt,
+                                TextColor3 = theme.text,
+                                Font = Enum.Font.Gotham,
+                                TextSize = scaled(11),
+                                ZIndex = 101,
+                                Parent = dropList
+                            })
+                            
+                            trackHover(optBtn, theme.panel, theme.hover)
+                            table.insert(optionButtons, { btn = optBtn, opt = opt })
+                            
+                            optBtn.MouseButton1Click:Connect(function()
+                                selectedValues = opt
+                                dropBtn.Text = selectedValues .. " v"
+                                open = false
+                                dropList.Visible = false
+                                row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight))
+                                if setting.callback then task.spawn(setting.callback, selectedValues) end
+                            end)
+                        end
                     end
                 end
                 buildOptions()
@@ -1557,10 +2345,10 @@ function EclipseUI:CreateWindow(cfg)
                 dropBtn.MouseButton1Click:Connect(function()
                     open = not open
                     dropList.Visible = open
-                    dropBtn.Text = value .. (open and " ^" or " v")
+                    updateOptionVisuals()
                     
                     if open then
-                        local listH = math.min(#options * 24, 120)
+                        local listH = math.min(#options * 26, 150)
                         dropList.Size = UDim2.new(0.58, 0, 0, listH)
                         row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + listH + 6)
                     else
@@ -1573,17 +2361,41 @@ function EclipseUI:CreateWindow(cfg)
                     dropBtn.BackgroundColor3 = t.bg
                     dropBtn.TextColor3 = t.text
                     dropList.BackgroundColor3 = t.bg
-                    for _, optBtn in ipairs(optionButtons) do
-                        updateHoverColors(optBtn, t.panel, t.hover)
-                        optBtn.TextColor3 = t.text
+                    for _, data in ipairs(optionButtons) do
+                        if data.btn then
+                            updateHoverColors(data.btn, t.panel, t.hover)
+                            if data.btn:FindFirstChild("TextLabel") then
+                                data.btn.TextLabel.TextColor3 = t.text
+                            elseif data.btn:IsA("TextButton") then
+                                data.btn.TextColor3 = t.text
+                            end
+                        end
+                        if data.check then
+                            data.check.TextColor3 = selectedValues[data.opt] and t.accent or t.textDim
+                        end
                     end
                 end)
                 
                 if setting.tooltip then attachTooltip(row, setting.tooltip) end
                 
                 return {
-                    Set = function(_, v) value = v; dropBtn.Text = v .. " v" end,
-                    Get = function() return value end,
+                    Set = function(_, v)
+                        if isMultiple and type(v) == "table" then
+                            selectedValues = {}
+                            for _, val in ipairs(v) do selectedValues[val] = true end
+                        else
+                            selectedValues = v
+                        end
+                        updateOptionVisuals()
+                    end,
+                    Get = function()
+                        if isMultiple then
+                            local result = {}
+                            for k, _ in pairs(selectedValues) do table.insert(result, k) end
+                            return result
+                        end
+                        return selectedValues
+                    end,
                     SetOptions = function(_, newOpts) options = newOpts; buildOptions() end
                 }
             end
@@ -1653,6 +2465,7 @@ function EclipseUI:CreateWindow(cfg)
                 text = cfg.text or cfg.name,
                 options = cfg.options,
                 default = cfg.default,
+                multiple = cfg.multiple, -- Enable multi-select with multiple = true
                 callback = cfg.callback,
                 tooltip = cfg.tooltip
             })
@@ -1822,6 +2635,46 @@ function EclipseUI:CreateWindow(cfg)
     
     settingsPanel:AddDivider()
     
+    -- ArrayList Position
+    settingsPanel:AddDropdown({
+        text = "ArrayList Pos",
+        options = { "Right", "Left" },
+        default = SavedSettings.arrayListPosition or "Right",
+        tooltip = "Position of the active modules list",
+        callback = function(v)
+            window:SetArrayListPosition(v)
+        end
+    })
+    
+    settingsPanel:AddDivider()
+    
+    -- Debug Mode Toggle
+    settingsPanel:_addSetting(settingsPanel.Content, {
+        type = "toggle",
+        text = "Debug Mode",
+        default = Config.debugMode,
+        tooltip = "Show debug information for troubleshooting",
+        callback = function(v)
+            window:SetDebugMode(v)
+            window:Notify("Debug mode " .. (v and "enabled" or "disabled"), 2)
+        end
+    })
+    
+    settingsPanel:AddDivider()
+    
+    -- Show Changelog button
+    settingsPanel:AddButton({
+        name = "View Changelog",
+        type = "button",
+        tooltip = "View update history",
+        notify = false,
+        callback = function()
+            window:ShowChangelog()
+        end
+    })
+    
+    settingsPanel:AddDivider()
+    
     -- Destroy UI button
     settingsPanel:AddButton({
         name = "Destroy UI",
@@ -1836,10 +2689,16 @@ function EclipseUI:CreateWindow(cfg)
         end
     })
     
-    -- Welcome notification
+    -- Apply saved ArrayList position
+    if SavedSettings.arrayListPosition then
+        window:SetArrayListPosition(SavedSettings.arrayListPosition)
+    end
+    
+    -- Welcome notification (after splash)
     task.defer(function()
+        task.wait(showSplash and 1.5 or 0)
         local saveStatus = canSaveFiles() and "Settings will be saved" or "Settings won't save (no file access)"
-        window:Notify("EclipseUI v2.2 loaded - " .. saveStatus, 4)
+        window:Notify("EclipseUI v2.3 loaded - " .. saveStatus, 4)
     end)
     
     return window
