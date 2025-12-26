@@ -1678,39 +1678,21 @@ function EclipseUI:CreateWindow(cfg)
             end
         end)
         
-        -- Dragging with scale compensation and SNAPPING
-        local dragging, dragStart, startPos = false, Vector2.new(), panel.Position
+        -- Dragging (simple, no bounds clamping to avoid bugs)
+        local dragging = false
+        local dragStart = Vector2.new()
+        local startAbsolutePos = Vector2.new()
         
         local function beginDrag(input)
             dragging = true
             dragStart = input.Position
-            startPos = panel.Position
+            -- Store the ABSOLUTE position when drag starts (converts Scale to actual pixels)
+            startAbsolutePos = panel.AbsolutePosition
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
                 end
             end)
-        end
-        
-        local function getClampedPosition(x, y)
-            local screenSize = gui.AbsoluteSize / Config.uiScale
-            local panelSize = panel.AbsoluteSize / Config.uiScale
-            
-            -- Safety check: ensure we have valid sizes
-            if screenSize.X <= 0 or screenSize.Y <= 0 or panelSize.X <= 0 or panelSize.Y <= 0 then
-                return x, y -- Don't clamp if sizes are invalid
-            end
-            
-            -- Keep panels on screen (simple bounds clamping, no snapping)
-            local minX = 0
-            local minY = 0
-            local maxX = math.max(0, screenSize.X - panelSize.X)
-            local maxY = math.max(0, screenSize.Y - panelSize.Y)
-            
-            x = math.clamp(x, minX, maxX)
-            y = math.clamp(y, minY, maxY)
-            
-            return x, y
         end
         
         header.InputBegan:Connect(function(input)
@@ -1722,19 +1704,19 @@ function EclipseUI:CreateWindow(cfg)
         local dragConn = UIS.InputChanged:Connect(function(input)
             if not dragging then return end
             if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+            
             local delta = input.Position - dragStart
-            -- Divide delta by scale to compensate for UI scaling
-            local scaledDelta = delta / Config.uiScale
-            local newX = startPos.X.Offset + scaledDelta.X
-            local newY = startPos.Y.Offset + scaledDelta.Y
+            -- Calculate new position from absolute start position
+            local newX = (startAbsolutePos.X + delta.X) / Config.uiScale
+            local newY = (startAbsolutePos.Y + delta.Y) / Config.uiScale
             
-            -- Apply snapping
-            newX, newY = getClampedPosition(newX, newY)
+            -- Simple bounds: keep panel header visible on screen
+            local screenSize = gui.AbsoluteSize / Config.uiScale
+            newX = math.max(-50, math.min(newX, screenSize.X - 50))
+            newY = math.max(0, math.min(newY, screenSize.Y - 40))
             
-            panel.Position = UDim2.new(
-                startPos.X.Scale, math.floor(newX + 0.5),
-                startPos.Y.Scale, math.floor(newY + 0.5)
-            )
+            -- Set position using OFFSET only (Scale = 0) to avoid UDim2 Scale issues
+            panel.Position = UDim2.fromOffset(math.floor(newX + 0.5), math.floor(newY + 0.5))
         end)
         table.insert(window._connections, dragConn)
         
