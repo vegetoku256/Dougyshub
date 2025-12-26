@@ -1701,26 +1701,26 @@ function EclipseUI:CreateWindow(cfg)
                 return math.max(0, x), math.max(0, y)
             end
             
-            -- Calculate bounds - keep at least header visible
-            local minX = -panelSize.X + 50 -- Allow most of panel off left, but keep 50px visible
-            local minY = 0 -- Don't allow going above screen
-            local maxX = screenSize.X - 50 -- Keep at least 50px visible on right
-            local maxY = screenSize.Y - 40 -- Keep header visible at bottom
+            -- Calculate bounds - keep full panel on screen
+            local minX = 0
+            local minY = 0
+            local maxX = math.max(0, screenSize.X - panelSize.X)
+            local maxY = math.max(0, screenSize.Y - panelSize.Y)
             
-            -- Simple edge snapping (no panel-to-panel snapping to avoid bugs)
+            -- Simple edge snapping (optional soft snap to edges)
             if enableSnapping then
                 local snapDist = Config.snapDistance
                 -- Snap to left edge
-                if math.abs(x) < snapDist then x = 0 end
+                if x > 0 and x < snapDist then x = 0 end
                 -- Snap to top edge
-                if math.abs(y) < snapDist then y = 0 end
-                -- Snap to right edge (panel right edge to screen right)
-                if math.abs(x + panelSize.X - screenSize.X) < snapDist then
-                    x = screenSize.X - panelSize.X
-                end
+                if y > 0 and y < snapDist then y = 0 end
+                -- Snap to right edge
+                if x < maxX and x > maxX - snapDist then x = maxX end
+                -- Snap to bottom edge
+                if y < maxY and y > maxY - snapDist then y = maxY end
             end
             
-            -- Clamp to bounds
+            -- Clamp to bounds - panels stay fully on screen
             x = math.clamp(x, minX, maxX)
             y = math.clamp(y, minY, maxY)
             
@@ -1809,10 +1809,36 @@ function EclipseUI:CreateWindow(cfg)
                 Parent = moduleRow
             })
             
+            -- Determine if this is a toggle or button type
+            local isToggle = cfg.type == "toggle" or cfg.type == nil
+            
+            -- Toggle indicator (small switch visual for toggles only)
+            local toggleIndicator, toggleKnob
+            if isToggle then
+                toggleIndicator = create("Frame", {
+                    Name = "ToggleIndicator",
+                    BackgroundColor3 = cfg.default and theme.enabled or theme.disabled,
+                    BorderSizePixel = 0,
+                    Size = UDim2.fromOffset(28, 14),
+                    Position = UDim2.new(0, 8, 0.5, -7),
+                    Parent = moduleRow
+                })
+                makeRounded(toggleIndicator, 7)
+                
+                toggleKnob = create("Frame", {
+                    BackgroundColor3 = Color3.new(1, 1, 1),
+                    BorderSizePixel = 0,
+                    Size = UDim2.fromOffset(10, 10),
+                    Position = cfg.default and UDim2.fromOffset(16, 2) or UDim2.fromOffset(2, 2),
+                    Parent = toggleIndicator
+                })
+                makeRounded(toggleKnob, 5)
+            end
+            
             local moduleName = create("TextLabel", {
                 BackgroundTransparency = 1,
-                Size = UDim2.new(1, -10, 1, 0),
-                Position = UDim2.fromOffset(10, 0),
+                Size = UDim2.new(1, isToggle and -45 or -10, 1, 0),
+                Position = UDim2.fromOffset(isToggle and 42 or 10, 0),
                 Text = cfg.name or "Module",
                 TextColor3 = cfg.default and theme.enabled or theme.disabled,
                 Font = Enum.Font.Gotham,
@@ -1871,6 +1897,13 @@ function EclipseUI:CreateWindow(cfg)
             
             local function updateState()
                 moduleName.TextColor3 = enabled and theme.enabled or theme.disabled
+                -- Animate toggle indicator if it exists
+                if toggleIndicator then
+                    tween(toggleIndicator, { BackgroundColor3 = enabled and theme.enabled or theme.disabled }, 0.15)
+                end
+                if toggleKnob then
+                    tween(toggleKnob, { Position = enabled and UDim2.fromOffset(16, 2) or UDim2.fromOffset(2, 2) }, 0.15)
+                end
             end
             
             -- Function to toggle settings expansion (with smooth animation)
@@ -1962,12 +1995,13 @@ function EclipseUI:CreateWindow(cfg)
                 row = moduleRow
             })
             
-            -- Theme subscriber - update hover colors
+            -- Theme subscriber - update hover colors and toggle indicator
             subscribeTheme(function(t)
                 updateHoverColors(moduleRow, t.panel, t.hover)
                 moduleName.TextColor3 = enabled and t.enabled or t.disabled
                 if expandBtn then expandBtn.TextColor3 = t.textDim end
                 if settingsContainer then settingsContainer.BackgroundColor3 = t.bg end
+                if toggleIndicator then toggleIndicator.BackgroundColor3 = enabled and t.enabled or t.disabled end
             end)
             
             local moduleObj = {
@@ -2182,6 +2216,8 @@ function EclipseUI:CreateWindow(cfg)
                 if setting.tooltip then attachTooltip(row, setting.tooltip) end
                 
                 return {
+                    _row = row,
+                    _sliderBg = sliderBg, -- For highlighting
                     Set = function(_, v) updateSlider(v); if setting.callback then task.spawn(setting.callback, value) end end,
                     Get = function() return value end
                 }
@@ -2258,6 +2294,8 @@ function EclipseUI:CreateWindow(cfg)
                 if setting.tooltip then attachTooltip(row, setting.tooltip) end
                 
                 return {
+                    _row = row,
+                    _inputBox = inputBox, -- For highlighting
                     Set = function(_, t) inputBox.Text = tostring(t or "") end,
                     Get = function() return inputBox.Text end
                 }
@@ -2316,6 +2354,8 @@ function EclipseUI:CreateWindow(cfg)
                 if setting.tooltip then attachTooltip(row, setting.tooltip) end
                 
                 return {
+                    _row = row,
+                    _keyBtn = keyBtn, -- For highlighting
                     Set = function(_, kc) currentKey = kc; keyBtn.Text = keycodeToString(kc) end,
                     Get = function() return currentKey end
                 }
@@ -2564,6 +2604,8 @@ function EclipseUI:CreateWindow(cfg)
                 if setting.tooltip then attachTooltip(row, setting.tooltip) end
                 
                 return {
+                    _row = row, -- Expose row for search tracking
+                    _dropBtn = dropBtn, -- Expose button for highlighting
                     Set = function(_, v)
                         if isMultiple and type(v) == "table" then
                             selectedValues = {}
@@ -2617,13 +2659,13 @@ function EclipseUI:CreateWindow(cfg)
                 callback = cfg.callback,
                 tooltip = cfg.tooltip
             })
-            -- Track for search
+            -- Track for search (use returned row and dropBtn for proper highlighting)
             table.insert(allSearchItems, {
                 name = cfg.text or cfg.name or "Dropdown",
                 panel = name,
                 itemType = "dropdown",
-                instance = content,
-                row = content
+                instance = control._row,
+                row = control._dropBtn or control._row -- Highlight the button
             })
             return control
         end
@@ -2641,13 +2683,13 @@ function EclipseUI:CreateWindow(cfg)
                 callback = cfg.callback,
                 tooltip = cfg.tooltip
             })
-            -- Track for search
+            -- Track for search (use returned row for proper highlighting)
             table.insert(allSearchItems, {
                 name = cfg.text or cfg.name or "Slider",
                 panel = name,
                 itemType = "slider",
-                instance = content,
-                row = content
+                instance = control._row,
+                row = control._sliderBg or control._row
             })
             return control
         end
@@ -2662,13 +2704,13 @@ function EclipseUI:CreateWindow(cfg)
                 callback = cfg.callback,
                 tooltip = cfg.tooltip
             })
-            -- Track for search
+            -- Track for search (use returned row for proper highlighting)
             table.insert(allSearchItems, {
                 name = cfg.text or cfg.name or "Input",
                 panel = name,
                 itemType = "input",
-                instance = content,
-                row = content
+                instance = control._row,
+                row = control._inputBox or control._row
             })
             return control
         end
@@ -2681,13 +2723,13 @@ function EclipseUI:CreateWindow(cfg)
                 callback = cfg.callback,
                 tooltip = cfg.tooltip
             })
-            -- Track for search
+            -- Track for search (use returned row for proper highlighting)
             table.insert(allSearchItems, {
                 name = cfg.text or cfg.name or "Keybind",
                 panel = name,
                 itemType = "keybind",
-                instance = content,
-                row = content
+                instance = control._row,
+                row = control._keyBtn or control._row
             })
             return control
         end
