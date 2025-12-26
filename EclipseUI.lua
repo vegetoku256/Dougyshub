@@ -1678,18 +1678,18 @@ function EclipseUI:CreateWindow(cfg)
             end
         end)
         
-        -- Simple delta-based dragging (no coordinate conversion issues)
+        -- Simple delta-based dragging
         local dragging = false
         local lastMousePos = Vector2.new()
+        local dragStartPanelPos = UDim2.new()
+        local dragStartMousePos = Vector2.new()
         
         header.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 dragging = true
-                lastMousePos = Vector2.new(input.Position.X, input.Position.Y)
-                
-                -- Convert panel to pure offset position immediately to avoid Scale issues
-                local absPos = panel.AbsolutePosition
-                panel.Position = UDim2.fromOffset(absPos.X / Config.uiScale, absPos.Y / Config.uiScale)
+                dragStartMousePos = Vector2.new(input.Position.X, input.Position.Y)
+                dragStartPanelPos = panel.Position
+                lastMousePos = dragStartMousePos
             end
         end)
         
@@ -1704,14 +1704,13 @@ function EclipseUI:CreateWindow(cfg)
             if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
             
             local mousePos = Vector2.new(input.Position.X, input.Position.Y)
-            local delta = mousePos - lastMousePos
-            lastMousePos = mousePos
+            local totalDelta = mousePos - dragStartMousePos
             
-            -- Move panel by delta (scaled to match coordinate system)
-            local currentPos = panel.Position
-            local newX = currentPos.X.Offset + delta.X / Config.uiScale
-            local newY = currentPos.Y.Offset + delta.Y / Config.uiScale
+            -- Apply delta to the ORIGINAL position (preserving Scale if any)
+            local newX = dragStartPanelPos.X.Scale * gui.AbsoluteSize.X + dragStartPanelPos.X.Offset + totalDelta.X / Config.uiScale
+            local newY = dragStartPanelPos.Y.Scale * gui.AbsoluteSize.Y + dragStartPanelPos.Y.Offset + totalDelta.Y / Config.uiScale
             
+            -- Set as pure offset (Scale = 0)
             panel.Position = UDim2.fromOffset(math.floor(newX), math.floor(newY))
         end)
         table.insert(window._connections, dragConn)
