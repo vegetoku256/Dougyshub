@@ -1,6 +1,6 @@
--- EclipseUI v2.1 — Minecraft Hack Client Style (Wurst-inspired)
+-- EclipseUI v2.2 — Minecraft Hack Client Style (Wurst-inspired)
 -- Pure Lua 5.1 (no Luau type annotations)
--- Mobile-friendly with touch support
+-- Mobile-friendly with touch support + Settings saving
 
 local EclipseUI = {}
 EclipseUI.__index = EclipseUI
@@ -14,6 +14,7 @@ local TextService = game:GetService("TextService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
 local Player = Players.LocalPlayer
 
 --=============================================================================
@@ -33,7 +34,55 @@ local Config = {
     isMobile = UIS.TouchEnabled,
     uiScale = 1.0,
     baseTextSize = 14,
+    saveFileName = "EclipseUI_Settings.json",
 }
+
+--=============================================================================
+-- SETTINGS SAVE/LOAD SYSTEM
+--=============================================================================
+local SavedSettings = {
+    theme = "Wurst",
+    notifyPosition = "TopRight",
+    fpsCap = 60,
+    toggleKey = "RightShift",
+    uiScale = 1.0,
+}
+
+local function canSaveFiles()
+    return writefile and readfile and isfile
+end
+
+local function loadSettings()
+    if not canSaveFiles() then return SavedSettings end
+    
+    pcall(function()
+        if isfile(Config.saveFileName) then
+            local data = readfile(Config.saveFileName)
+            local decoded = HttpService:JSONDecode(data)
+            if decoded then
+                for k, v in pairs(decoded) do
+                    SavedSettings[k] = v
+                end
+            end
+        end
+    end)
+    
+    return SavedSettings
+end
+
+local function saveSettings()
+    if not canSaveFiles() then return false end
+    
+    local ok = pcall(function()
+        local data = HttpService:JSONEncode(SavedSettings)
+        writefile(Config.saveFileName, data)
+    end)
+    
+    return ok
+end
+
+-- Load settings on start
+loadSettings()
 
 --=============================================================================
 -- THEMES (with animation styles)
@@ -54,7 +103,7 @@ local Themes = {
         hover = Color3.fromRGB(50, 50, 50),
         stroke = Color3.fromRGB(60, 60, 60),
         notification = Color3.fromRGB(0, 200, 83),
-        animStyle = "Fade", -- Fade, Slide, Scale
+        animStyle = "Fade",
     },
     ["Impact"] = {
         name = "Impact",
@@ -126,7 +175,8 @@ local Themes = {
     },
 }
 
-local CurrentTheme = Themes["Wurst"]
+-- Apply saved theme
+local CurrentTheme = Themes[SavedSettings.theme] or Themes["Wurst"]
 
 --=============================================================================
 -- UTILITY FUNCTIONS
@@ -157,6 +207,10 @@ end
 local function keycodeToString(kc)
     local str = tostring(kc)
     return str:match("([^%.]+)$") or str
+end
+
+local function stringToKeycode(str)
+    return Enum.KeyCode[str] or Enum.KeyCode.RightShift
 end
 
 local function getTextSize(text, size, font)
@@ -226,20 +280,65 @@ local function publishTheme(theme)
 end
 
 --=============================================================================
+-- HOVER STATE TRACKER (for fixing theme change hover bug)
+--=============================================================================
+local HoverStates = {}
+local function trackHover(element, baseColor, hoverColor)
+    HoverStates[element] = {
+        isHovered = false,
+        baseColor = baseColor,
+        hoverColor = hoverColor,
+    }
+    
+    element.MouseEnter:Connect(function()
+        if HoverStates[element] then
+            HoverStates[element].isHovered = true
+            tween(element, { BackgroundColor3 = HoverStates[element].hoverColor }, 0.1)
+        end
+    end)
+    
+    element.MouseLeave:Connect(function()
+        if HoverStates[element] then
+            HoverStates[element].isHovered = false
+            tween(element, { BackgroundColor3 = HoverStates[element].baseColor }, 0.1)
+        end
+    end)
+    
+    return HoverStates[element]
+end
+
+local function updateHoverColors(element, baseColor, hoverColor)
+    if HoverStates[element] then
+        HoverStates[element].baseColor = baseColor
+        HoverStates[element].hoverColor = hoverColor
+        -- Apply correct color based on current state
+        if HoverStates[element].isHovered then
+            element.BackgroundColor3 = hoverColor
+        else
+            element.BackgroundColor3 = baseColor
+        end
+    end
+end
+
+--=============================================================================
 -- MAIN WINDOW CREATION
 --=============================================================================
 function EclipseUI:CreateWindow(cfg)
     cfg = cfg or {}
     
-    -- Apply theme
-    if cfg.Theme and Themes[cfg.Theme] then
-        CurrentTheme = Themes[cfg.Theme]
+    -- Apply saved or configured theme
+    local themeName = SavedSettings.theme or cfg.Theme or "Wurst"
+    if Themes[themeName] then
+        CurrentTheme = Themes[themeName]
     end
     
     local theme = CurrentTheme
-    local toggleKey = cfg.ToggleKey or Enum.KeyCode.RightShift
-    local notifyPosition = cfg.NotifyPosition or "TopRight"
+    local toggleKey = stringToKeycode(SavedSettings.toggleKey) or cfg.ToggleKey or Enum.KeyCode.RightShift
+    local notifyPosition = SavedSettings.notifyPosition or cfg.NotifyPosition or "TopRight"
     local overlayOpacity = cfg.OverlayOpacity or 0.4
+    
+    -- Apply saved UI scale
+    Config.uiScale = SavedSettings.uiScale or 1.0
     
     -- Main ScreenGui
     local gui = create("ScreenGui", {
@@ -418,32 +517,48 @@ function EclipseUI:CreateWindow(cfg)
     })
     makeRounded(mobileOpenBtn, 10)
     
-    -- CLOSE BUTTON (draggable, always visible when menu is open)
-    local closeBtn = create("TextButton", {
-        Name = "CloseButton",
+    -- TOGGLE BUTTON (draggable, changes appearance based on state)
+    local uiVisible = true
+    
+    local toggleBtn = create("TextButton", {
+        Name = "ToggleButton",
         BackgroundColor3 = Color3.fromRGB(200, 50, 50),
         BorderSizePixel = 0,
         Size = UDim2.fromOffset(50, 50),
         Position = UDim2.new(1, -70, 1, -70),
-        Text = "✕",
+        Text = "X",
         TextColor3 = Color3.new(1, 1, 1),
         Font = Enum.Font.GothamBold,
-        TextSize = 22,
+        TextSize = 24,
         ZIndex = 999,
         Parent = gui
     })
-    makeRounded(closeBtn, 25)
-    makeStroke(closeBtn, Color3.fromRGB(255, 100, 100), 2)
+    makeRounded(toggleBtn, 25)
+    makeStroke(toggleBtn, Color3.fromRGB(255, 100, 100), 2)
     
-    -- Make close button draggable
+    local function updateToggleBtnAppearance()
+        if uiVisible then
+            toggleBtn.Text = "X"
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+            local stroke = toggleBtn:FindFirstChildOfClass("UIStroke")
+            if stroke then stroke.Color = Color3.fromRGB(255, 100, 100) end
+        else
+            toggleBtn.Text = "="
+            toggleBtn.BackgroundColor3 = theme.accent
+            local stroke = toggleBtn:FindFirstChildOfClass("UIStroke")
+            if stroke then stroke.Color = theme.accentDark end
+        end
+    end
+    
+    -- Make toggle button draggable
     do
-        local dragging, dragStart, startPos = false, Vector2.new(), closeBtn.Position
+        local dragging, dragStart, startPos = false, Vector2.new(), toggleBtn.Position
         
-        closeBtn.InputBegan:Connect(function(input)
+        toggleBtn.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 dragging = true
                 dragStart = input.Position
-                startPos = closeBtn.Position
+                startPos = toggleBtn.Position
                 input.Changed:Connect(function()
                     if input.UserInputState == Enum.UserInputState.End then
                         dragging = false
@@ -456,15 +571,12 @@ function EclipseUI:CreateWindow(cfg)
             if not dragging then return end
             if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
             local delta = input.Position - dragStart
-            closeBtn.Position = UDim2.new(
+            toggleBtn.Position = UDim2.new(
                 startPos.X.Scale, math.floor(startPos.X.Offset + delta.X + 0.5),
                 startPos.Y.Scale, math.floor(startPos.Y.Offset + delta.Y + 0.5)
             )
         end)
     end
-    
-    -- UI visibility state
-    local uiVisible = true
     
     local function updateHintText()
         hintText.Text = "Press " .. keycodeToString(toggleKey) .. " to open"
@@ -475,9 +587,9 @@ function EclipseUI:CreateWindow(cfg)
     local function setUIVisible(visible)
         uiVisible = visible
         panelContainer.Visible = visible
-        closeBtn.Visible = visible
         hint.Visible = not visible
         mobileOpenBtn.Visible = not visible and Config.isMobile
+        updateToggleBtnAppearance()
         
         -- Animate overlay
         if visible then
@@ -499,12 +611,20 @@ function EclipseUI:CreateWindow(cfg)
         setUIVisible(true)
     end)
     
-    closeBtn.MouseButton1Click:Connect(function()
-        setUIVisible(false)
+    toggleBtn.MouseButton1Click:Connect(function()
+        setUIVisible(not uiVisible)
     end)
     
     -- Initial overlay state
     overlay.BackgroundTransparency = 1 - overlayOpacity
+    updateToggleBtnAppearance()
+    
+    -- Apply saved FPS cap
+    if SavedSettings.fpsCap and SavedSettings.fpsCap ~= 60 then
+        task.defer(function()
+            applyFpsCap(SavedSettings.fpsCap)
+        end)
+    end
     
     --=========================================================================
     -- WINDOW OBJECT & METHODS
@@ -544,12 +664,11 @@ function EclipseUI:CreateWindow(cfg)
         })
         makeRounded(accentBar, 2)
         
-        -- Increased left padding to avoid text touching the accent bar
         create("UIPadding", { 
             Parent = notif, 
             PaddingTop = UDim.new(0, 10), 
             PaddingBottom = UDim.new(0, 10), 
-            PaddingLeft = UDim.new(0, 18),  -- More space from accent bar
+            PaddingLeft = UDim.new(0, 18),
             PaddingRight = UDim.new(0, 12) 
         })
         
@@ -567,19 +686,17 @@ function EclipseUI:CreateWindow(cfg)
             Parent = notif
         })
         
-        -- Close button
         local closeBtnNotif = create("TextButton", {
             BackgroundTransparency = 1,
             Size = UDim2.fromOffset(20, 20),
             Position = UDim2.new(1, -20, 0, 0),
-            Text = "×",
+            Text = "x",
             TextColor3 = theme.textDim,
             Font = Enum.Font.GothamBold,
-            TextSize = 18,
+            TextSize = 16,
             Parent = notif
         })
         
-        -- Animate in
         notif.BackgroundTransparency = 1
         notifLabel.TextTransparency = 1
         accentBar.BackgroundTransparency = 1
@@ -611,6 +728,8 @@ function EclipseUI:CreateWindow(cfg)
     function window:SetNotifyPosition(pos)
         notifyPosition = pos
         window._notifyPosition = pos
+        SavedSettings.notifyPosition = pos
+        saveSettings()
         updateNotifPosition()
         
         local layout = notifContainer:FindFirstChildOfClass("UIListLayout")
@@ -628,9 +747,11 @@ function EclipseUI:CreateWindow(cfg)
             publishTheme(Themes[themeName])
             window.Theme = CurrentTheme
             theme = CurrentTheme
+            SavedSettings.theme = themeName
+            saveSettings()
             
-            -- Update overlay color
             overlay.BackgroundColor3 = CurrentTheme.overlay
+            updateToggleBtnAppearance()
             
             window:Notify("Theme changed to " .. themeName, 2)
         end
@@ -642,6 +763,8 @@ function EclipseUI:CreateWindow(cfg)
     function window:SetToggleKey(keyCode)
         toggleKey = keyCode
         window._toggleKey = keyCode
+        SavedSettings.toggleKey = keycodeToString(keyCode)
+        saveSettings()
         updateHintText()
     end
     
@@ -649,8 +772,10 @@ function EclipseUI:CreateWindow(cfg)
     -- SET UI SCALE
     --=========================================================================
     function window:SetScale(scale)
-        Config.uiScale = math.clamp(scale, 0.5, 2.0)
+        Config.uiScale = math.clamp(scale, 0.8, 1.3)
         uiScaleObj.Scale = Config.uiScale
+        SavedSettings.uiScale = Config.uiScale
+        saveSettings()
     end
     
     --=========================================================================
@@ -685,7 +810,6 @@ function EclipseUI:CreateWindow(cfg)
         local theme = CurrentTheme
         local panelWidth = scaled(Config.panelWidth)
         
-        -- Adjust for mobile
         if Config.isMobile then
             panelWidth = math.min(panelWidth, gui.AbsoluteSize.X * 0.45)
         end
@@ -704,7 +828,6 @@ function EclipseUI:CreateWindow(cfg)
         makeRounded(panel, Config.cornerRadius)
         makeStroke(panel, theme.stroke)
         
-        -- Header
         local header = create("Frame", {
             Name = "Header",
             BackgroundColor3 = theme.panelHeader,
@@ -726,19 +849,17 @@ function EclipseUI:CreateWindow(cfg)
             Parent = header
         })
         
-        -- Collapse arrow
         local collapseBtn = create("TextButton", {
             BackgroundTransparency = 1,
             Size = UDim2.fromOffset(24, 24),
             Position = UDim2.new(1, -28, 0.5, -12),
-            Text = "▼",
+            Text = "v",
             TextColor3 = theme.textDim,
             Font = Enum.Font.GothamBold,
-            TextSize = scaled(12),
+            TextSize = scaled(14),
             Parent = header
         })
         
-        -- Content container
         local content = create("Frame", {
             Name = "Content",
             BackgroundTransparency = 1,
@@ -763,12 +884,11 @@ function EclipseUI:CreateWindow(cfg)
             PaddingRight = UDim.new(0, 6)
         })
         
-        -- Collapse state
         local collapsed = false
         
         collapseBtn.MouseButton1Click:Connect(function()
             collapsed = not collapsed
-            collapseBtn.Text = collapsed and "▶" or "▼"
+            collapseBtn.Text = collapsed and ">" or "v"
             content.Visible = not collapsed
             
             if collapsed then
@@ -781,7 +901,7 @@ function EclipseUI:CreateWindow(cfg)
             end
         end)
         
-        -- Dragging
+        -- Dragging with scale compensation
         local dragging, dragStart, startPos = false, Vector2.new(), panel.Position
         
         local function beginDrag(input)
@@ -805,9 +925,11 @@ function EclipseUI:CreateWindow(cfg)
             if not dragging then return end
             if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
             local delta = input.Position - dragStart
+            -- Divide delta by scale to compensate for UI scaling
+            local scaledDelta = delta / Config.uiScale
             panel.Position = UDim2.new(
-                startPos.X.Scale, math.floor(startPos.X.Offset + delta.X + 0.5),
-                startPos.Y.Scale, math.floor(startPos.Y.Offset + delta.Y + 0.5)
+                startPos.X.Scale, math.floor(startPos.X.Offset + scaledDelta.X + 0.5),
+                startPos.Y.Scale, math.floor(startPos.Y.Offset + scaledDelta.Y + 0.5)
             )
         end)
         table.insert(window._connections, dragConn)
@@ -859,7 +981,9 @@ function EclipseUI:CreateWindow(cfg)
             })
             makeRounded(moduleRow, 4)
             
-            -- Module name/toggle
+            -- Track hover state for this module
+            trackHover(moduleRow, theme.panel, theme.hover)
+            
             local moduleBtn = create("TextButton", {
                 BackgroundTransparency = 1,
                 Size = UDim2.new(1, hasSettings and -24 or 0, 1, 0),
@@ -879,7 +1003,6 @@ function EclipseUI:CreateWindow(cfg)
                 Parent = moduleBtn
             })
             
-            -- Expand arrow (only if has settings)
             local expandBtn
             local expanded = false
             
@@ -888,15 +1011,14 @@ function EclipseUI:CreateWindow(cfg)
                     BackgroundTransparency = 1,
                     Size = UDim2.fromOffset(24, scaled(Config.moduleHeight)),
                     Position = UDim2.new(1, -24, 0, 0),
-                    Text = "›",
+                    Text = ">",
                     TextColor3 = theme.textDim,
                     Font = Enum.Font.GothamBold,
-                    TextSize = scaled(16),
+                    TextSize = scaled(14),
                     Parent = moduleRow
                 })
             end
             
-            -- Settings container
             local settingsContainer
             if hasSettings then
                 settingsContainer = create("Frame", {
@@ -927,22 +1049,12 @@ function EclipseUI:CreateWindow(cfg)
                 })
             end
             
-            -- Toggle state
             local enabled = cfg.default or false
             
             local function updateState()
                 moduleName.TextColor3 = enabled and theme.enabled or theme.disabled
             end
             
-            -- Hover effect
-            moduleRow.MouseEnter:Connect(function()
-                tween(moduleRow, { BackgroundColor3 = theme.hover }, 0.1)
-            end)
-            moduleRow.MouseLeave:Connect(function()
-                tween(moduleRow, { BackgroundColor3 = theme.panel }, 0.1)
-            end)
-            
-            -- Click to toggle (if toggle type)
             if cfg.type == "toggle" or cfg.type == nil then
                 moduleBtn.MouseButton1Click:Connect(function()
                     enabled = not enabled
@@ -965,16 +1077,14 @@ function EclipseUI:CreateWindow(cfg)
                 end)
             end
             
-            -- Tooltip
             if cfg.tooltip then
                 attachTooltip(moduleRow, cfg.tooltip)
             end
             
-            -- Expand settings
             if hasSettings and expandBtn then
                 expandBtn.MouseButton1Click:Connect(function()
                     expanded = not expanded
-                    expandBtn.Text = expanded and "ˇ" or "›"
+                    expandBtn.Text = expanded and "v" or ">"
                     settingsContainer.Visible = expanded
                     
                     if expanded then
@@ -986,17 +1096,14 @@ function EclipseUI:CreateWindow(cfg)
                 end)
             end
             
-            -- Theme subscriber
+            -- Theme subscriber - update hover colors
             subscribeTheme(function(t)
-                moduleRow.BackgroundColor3 = t.panel
+                updateHoverColors(moduleRow, t.panel, t.hover)
                 moduleName.TextColor3 = enabled and t.enabled or t.disabled
                 if expandBtn then expandBtn.TextColor3 = t.textDim end
                 if settingsContainer then settingsContainer.BackgroundColor3 = t.bg end
             end)
             
-            --=================================================================
-            -- MODULE CONTROLS API
-            --=================================================================
             local moduleObj = {
                 Instance = moduleHolder,
                 Row = moduleRow,
@@ -1013,7 +1120,6 @@ function EclipseUI:CreateWindow(cfg)
                 return enabled
             end
             
-            -- Build settings if provided
             if hasSettings and settingsContainer then
                 for _, setting in ipairs(cfg.settings) do
                     panelObj:_addSetting(settingsContainer, setting)
@@ -1227,12 +1333,18 @@ function EclipseUI:CreateWindow(cfg)
                 })
                 makeRounded(btn, 4)
                 
-                btn.MouseEnter:Connect(function() tween(btn, { BackgroundColor3 = theme.hover }, 0.1) end)
-                btn.MouseLeave:Connect(function() tween(btn, { BackgroundColor3 = theme.panelHeader }, 0.1) end)
+                -- Track hover for button
+                trackHover(btn, theme.panelHeader, theme.hover)
                 
                 btn.MouseButton1Click:Connect(function()
                     if setting.callback then task.spawn(setting.callback) end
                     if setting.notify then window:Notify(setting.notifyText or (setting.text .. " clicked"), 2) end
+                end)
+                
+                -- Theme subscriber for button
+                subscribeTheme(function(t)
+                    updateHoverColors(btn, t.panelHeader, t.hover)
+                    btn.TextColor3 = t.text
                 end)
                 
                 if setting.tooltip then attachTooltip(btn, setting.tooltip) end
@@ -1366,7 +1478,7 @@ function EclipseUI:CreateWindow(cfg)
                     BorderSizePixel = 0,
                     Size = UDim2.new(0.58, 0, 0, scaled(Config.settingHeight) - 4),
                     Position = UDim2.new(0.42, 0, 0, 2),
-                    Text = (setting.default or setting.options[1] or "Select") .. " ▼",
+                    Text = (setting.default or setting.options[1] or "Select") .. " v",
                     TextColor3 = theme.text,
                     Font = Enum.Font.Gotham,
                     TextSize = scaled(11),
@@ -1397,11 +1509,13 @@ function EclipseUI:CreateWindow(cfg)
                 local options = setting.options or {}
                 local value = setting.default or options[1] or ""
                 local open = false
+                local optionButtons = {}
                 
                 local function buildOptions()
                     for _, child in ipairs(dropList:GetChildren()) do
                         if child:IsA("TextButton") then child:Destroy() end
                     end
+                    optionButtons = {}
                     
                     for _, opt in ipairs(options) do
                         local optBtn = create("TextButton", {
@@ -1416,12 +1530,12 @@ function EclipseUI:CreateWindow(cfg)
                             Parent = dropList
                         })
                         
-                        optBtn.MouseEnter:Connect(function() optBtn.BackgroundColor3 = theme.hover end)
-                        optBtn.MouseLeave:Connect(function() optBtn.BackgroundColor3 = theme.panel end)
+                        trackHover(optBtn, theme.panel, theme.hover)
+                        table.insert(optionButtons, optBtn)
                         
                         optBtn.MouseButton1Click:Connect(function()
                             value = opt
-                            dropBtn.Text = value .. " ▼"
+                            dropBtn.Text = value .. " v"
                             open = false
                             dropList.Visible = false
                             row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight))
@@ -1434,7 +1548,7 @@ function EclipseUI:CreateWindow(cfg)
                 dropBtn.MouseButton1Click:Connect(function()
                     open = not open
                     dropList.Visible = open
-                    dropBtn.Text = value .. (open and " ▲" or " ▼")
+                    dropBtn.Text = value .. (open and " ^" or " v")
                     
                     if open then
                         local listH = math.min(#options * 24, 120)
@@ -1445,10 +1559,21 @@ function EclipseUI:CreateWindow(cfg)
                     end
                 end)
                 
+                -- Theme subscriber for dropdown options
+                subscribeTheme(function(t)
+                    dropBtn.BackgroundColor3 = t.bg
+                    dropBtn.TextColor3 = t.text
+                    dropList.BackgroundColor3 = t.bg
+                    for _, optBtn in ipairs(optionButtons) do
+                        updateHoverColors(optBtn, t.panel, t.hover)
+                        optBtn.TextColor3 = t.text
+                    end
+                end)
+                
                 if setting.tooltip then attachTooltip(row, setting.tooltip) end
                 
                 return {
-                    Set = function(_, v) value = v; dropBtn.Text = v .. " ▼" end,
+                    Set = function(_, v) value = v; dropBtn.Text = v .. " v" end,
                     Get = function() return value end,
                     SetOptions = function(_, newOpts) options = newOpts; buildOptions() end
                 }
@@ -1456,7 +1581,7 @@ function EclipseUI:CreateWindow(cfg)
         end
         
         --=====================================================================
-        -- SHORTHAND METHODS (add controls directly to panel)
+        -- SHORTHAND METHODS
         --=====================================================================
         function panelObj:AddLabel(text, tooltip)
             return self:_addSetting(content, { type = "label", text = text, tooltip = tooltip })
@@ -1530,18 +1655,18 @@ function EclipseUI:CreateWindow(cfg)
     --=========================================================================
     -- CREATE DEFAULT SETTINGS PANEL
     --=========================================================================
-    local settingsPanel = window:AddPanel("⚙ Settings", UDim2.new(1, -240, 0, 15))
+    local settingsPanel = window:AddPanel("Settings", UDim2.new(1, -240, 0, 15))
     
-    -- UI Scale slider
+    -- UI Scale slider (reduced range)
     settingsPanel:AddSlider({
         text = "UI Scale",
-        min = 0.6,
-        max = 1.8,
-        step = 0.1,
-        default = 1.0,
-        rounding = 1,
+        min = 0.8,
+        max = 1.3,
+        step = 0.05,
+        default = Config.uiScale,
+        rounding = 2,
         suffix = "x",
-        tooltip = "Scale the UI size for readability",
+        tooltip = "Scale the UI size (0.8x - 1.3x)",
         callback = function(v)
             window:SetScale(v)
         end
@@ -1566,10 +1691,12 @@ function EclipseUI:CreateWindow(cfg)
         min = 10,
         max = 500,
         step = 10,
-        default = 60,
+        default = SavedSettings.fpsCap or 60,
         suffix = " fps",
         tooltip = "Limit client FPS (requires executor support)",
         callback = function(v)
+            SavedSettings.fpsCap = v
+            saveSettings()
             local ok = applyFpsCap(v)
             if not ok then
                 window:Notify("FPS cap not supported by your executor", 3)
@@ -1613,7 +1740,7 @@ function EclipseUI:CreateWindow(cfg)
     
     -- Destroy UI button
     settingsPanel:AddButton({
-        name = "🗑 Destroy UI",
+        name = "Destroy UI",
         type = "button",
         tooltip = "Completely removes the UI from the game",
         notify = false,
@@ -1627,7 +1754,8 @@ function EclipseUI:CreateWindow(cfg)
     
     -- Welcome notification
     task.defer(function()
-        window:Notify("EclipseUI v2.1 loaded • Press " .. keycodeToString(toggleKey) .. " to toggle", 4)
+        local saveStatus = canSaveFiles() and "Settings will be saved" or "Settings won't save (no file access)"
+        window:Notify("EclipseUI v2.2 loaded - " .. saveStatus, 4)
     end)
     
     return window
