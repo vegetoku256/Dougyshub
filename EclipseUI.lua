@@ -1,4 +1,4 @@
--- EclipseUI v2.0 — Minecraft Hack Client Style (Wurst-inspired)
+-- EclipseUI v2.1 — Minecraft Hack Client Style (Wurst-inspired)
 -- Pure Lua 5.1 (no Luau type annotations)
 -- Mobile-friendly with touch support
 
@@ -20,17 +20,19 @@ local Player = Players.LocalPlayer
 -- CONFIGURATION
 --=============================================================================
 local Config = {
-    panelWidth = 180,
-    panelMinWidth = 140,
-    panelMaxWidth = 280,
-    headerHeight = 28,
-    moduleHeight = 24,
-    settingHeight = 22,
-    padding = 6,
-    cornerRadius = 4,
+    panelWidth = 220,
+    panelMinWidth = 180,
+    panelMaxWidth = 350,
+    headerHeight = 32,
+    moduleHeight = 28,
+    settingHeight = 26,
+    padding = 8,
+    cornerRadius = 5,
     animDuration = 0.15,
     notifyDuration = 3,
     isMobile = UIS.TouchEnabled,
+    uiScale = 1.0,
+    baseTextSize = 14,
 }
 
 --=============================================================================
@@ -40,6 +42,7 @@ local Themes = {
     ["Wurst"] = {
         name = "Wurst",
         bg = Color3.fromRGB(20, 20, 20),
+        overlay = Color3.fromRGB(0, 0, 0),
         panel = Color3.fromRGB(30, 30, 30),
         panelHeader = Color3.fromRGB(40, 40, 40),
         accent = Color3.fromRGB(0, 200, 83),
@@ -56,6 +59,7 @@ local Themes = {
     ["Impact"] = {
         name = "Impact",
         bg = Color3.fromRGB(15, 15, 20),
+        overlay = Color3.fromRGB(0, 0, 0),
         panel = Color3.fromRGB(25, 25, 35),
         panelHeader = Color3.fromRGB(35, 35, 50),
         accent = Color3.fromRGB(180, 50, 50),
@@ -72,6 +76,7 @@ local Themes = {
     ["Future"] = {
         name = "Future",
         bg = Color3.fromRGB(10, 10, 15),
+        overlay = Color3.fromRGB(0, 0, 0),
         panel = Color3.fromRGB(18, 18, 25),
         panelHeader = Color3.fromRGB(28, 28, 40),
         accent = Color3.fromRGB(100, 180, 255),
@@ -88,6 +93,7 @@ local Themes = {
     ["Meteor"] = {
         name = "Meteor",
         bg = Color3.fromRGB(15, 10, 20),
+        overlay = Color3.fromRGB(0, 0, 0),
         panel = Color3.fromRGB(25, 18, 35),
         panelHeader = Color3.fromRGB(40, 28, 55),
         accent = Color3.fromRGB(190, 80, 250),
@@ -104,6 +110,7 @@ local Themes = {
     ["Aristois"] = {
         name = "Aristois",
         bg = Color3.fromRGB(20, 18, 15),
+        overlay = Color3.fromRGB(0, 0, 0),
         panel = Color3.fromRGB(35, 30, 25),
         panelHeader = Color3.fromRGB(50, 42, 35),
         accent = Color3.fromRGB(255, 170, 50),
@@ -152,10 +159,6 @@ local function keycodeToString(kc)
     return str:match("([^%.]+)$") or str
 end
 
-local function lerp(a, b, t)
-    return a + (b - a) * t
-end
-
 local function getTextSize(text, size, font)
     return TextService:GetTextSize(text, size, font, Vector2.new(1000, 100))
 end
@@ -167,36 +170,8 @@ local function tween(obj, props, duration, style, dir)
     return t
 end
 
--- Animate based on theme style
-local function animateIn(obj, style)
-    style = style or CurrentTheme.animStyle
-    if style == "Fade" then
-        obj.BackgroundTransparency = 1
-        tween(obj, { BackgroundTransparency = 0 }, 0.2)
-    elseif style == "Slide" then
-        local orig = obj.Position
-        obj.Position = orig - UDim2.fromOffset(0, 20)
-        tween(obj, { Position = orig }, 0.25, Enum.EasingStyle.Back)
-    elseif style == "Scale" then
-        obj.Size = UDim2.fromScale(0.8, 0.8)
-        obj.AnchorPoint = Vector2.new(0.5, 0.5)
-        tween(obj, { Size = obj.Size }, 0.2, Enum.EasingStyle.Back)
-    end
-end
-
-local function animateOut(obj, style, callback)
-    style = style or CurrentTheme.animStyle
-    local dur = 0.15
-    if style == "Fade" then
-        tween(obj, { BackgroundTransparency = 1 }, dur)
-    elseif style == "Slide" then
-        tween(obj, { Position = obj.Position + UDim2.fromOffset(0, -20) }, dur)
-    elseif style == "Scale" then
-        tween(obj, { Size = UDim2.fromScale(0.8, 0.8) }, dur)
-    end
-    if callback then
-        task.delay(dur, callback)
-    end
+local function scaled(value)
+    return math.floor(value * Config.uiScale + 0.5)
 end
 
 --=============================================================================
@@ -263,7 +238,8 @@ function EclipseUI:CreateWindow(cfg)
     
     local theme = CurrentTheme
     local toggleKey = cfg.ToggleKey or Enum.KeyCode.RightShift
-    local notifyPosition = cfg.NotifyPosition or "TopRight" -- TopRight, TopLeft, BottomRight, BottomLeft
+    local notifyPosition = cfg.NotifyPosition or "TopRight"
+    local overlayOpacity = cfg.OverlayOpacity or 0.4
     
     -- Main ScreenGui
     local gui = create("ScreenGui", {
@@ -274,7 +250,18 @@ function EclipseUI:CreateWindow(cfg)
         Parent = CoreGui
     })
     
-    -- Container for all panels
+    -- Dark overlay background (when menu is open)
+    local overlay = create("Frame", {
+        Name = "Overlay",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = theme.overlay,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ZIndex = 0,
+        Parent = gui
+    })
+    
+    -- Container for all panels (with UIScale for scaling)
     local panelContainer = create("Frame", {
         Name = "PanelContainer",
         Size = UDim2.fromScale(1, 1),
@@ -282,27 +269,33 @@ function EclipseUI:CreateWindow(cfg)
         Parent = gui
     })
     
+    local uiScaleObj = create("UIScale", {
+        Scale = Config.uiScale,
+        Parent = panelContainer
+    })
+    
     -- Notification container
     local notifContainer = create("Frame", {
         Name = "NotificationContainer",
-        Size = UDim2.fromOffset(280, 400),
+        Size = UDim2.fromOffset(320, 500),
         BackgroundTransparency = 1,
+        ZIndex = 100,
         Parent = gui
     })
     
     local function updateNotifPosition()
         if notifyPosition == "TopRight" then
             notifContainer.AnchorPoint = Vector2.new(1, 0)
-            notifContainer.Position = UDim2.new(1, -10, 0, 10)
+            notifContainer.Position = UDim2.new(1, -15, 0, 15)
         elseif notifyPosition == "TopLeft" then
             notifContainer.AnchorPoint = Vector2.new(0, 0)
-            notifContainer.Position = UDim2.new(0, 10, 0, 10)
+            notifContainer.Position = UDim2.new(0, 15, 0, 15)
         elseif notifyPosition == "BottomRight" then
             notifContainer.AnchorPoint = Vector2.new(1, 1)
-            notifContainer.Position = UDim2.new(1, -10, 1, -10)
+            notifContainer.Position = UDim2.new(1, -15, 1, -15)
         elseif notifyPosition == "BottomLeft" then
             notifContainer.AnchorPoint = Vector2.new(0, 1)
-            notifContainer.Position = UDim2.new(0, 10, 1, -10)
+            notifContainer.Position = UDim2.new(0, 15, 1, -15)
         end
     end
     updateNotifPosition()
@@ -310,7 +303,7 @@ function EclipseUI:CreateWindow(cfg)
     create("UIListLayout", {
         Parent = notifContainer,
         SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 6),
+        Padding = UDim.new(0, 8),
         VerticalAlignment = notifyPosition:find("Bottom") and Enum.VerticalAlignment.Bottom or Enum.VerticalAlignment.Top,
         HorizontalAlignment = notifyPosition:find("Left") and Enum.HorizontalAlignment.Left or Enum.HorizontalAlignment.Right
     })
@@ -324,16 +317,16 @@ function EclipseUI:CreateWindow(cfg)
         ZIndex = 1000,
         Parent = gui
     })
-    makeRounded(tooltip, 4)
+    makeRounded(tooltip, 5)
     makeStroke(tooltip, theme.accent, 1)
-    create("UIPadding", { Parent = tooltip, PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4), PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
+    create("UIPadding", { Parent = tooltip, PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) })
     
     local tooltipText = create("TextLabel", {
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1),
         TextColor3 = theme.text,
         Font = Enum.Font.Gotham,
-        TextSize = 12,
+        TextSize = 13,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = tooltip
     })
@@ -345,15 +338,15 @@ function EclipseUI:CreateWindow(cfg)
         if not text or text == "" then return end
         tooltipTarget = target
         tooltipText.Text = text
-        local sz = getTextSize(text, 12, Enum.Font.Gotham)
-        tooltip.Size = UDim2.fromOffset(sz.X + 16, sz.Y + 8)
+        local sz = getTextSize(text, 13, Enum.Font.Gotham)
+        tooltip.Size = UDim2.fromOffset(sz.X + 20, sz.Y + 12)
         
         task.delay(tooltipDelay, function()
             if tooltipTarget == target then
                 local mouse = UIS:GetMouseLocation()
                 local screen = gui.AbsoluteSize
-                local x = math.clamp(mouse.X + 10, 0, screen.X - tooltip.AbsoluteSize.X)
-                local y = math.clamp(mouse.Y + 15, 0, screen.Y - tooltip.AbsoluteSize.Y)
+                local x = math.clamp(mouse.X + 12, 0, screen.X - tooltip.AbsoluteSize.X)
+                local y = math.clamp(mouse.Y + 18, 0, screen.Y - tooltip.AbsoluteSize.Y)
                 tooltip.Position = UDim2.fromOffset(x, y)
                 tooltip.Visible = true
             end
@@ -376,8 +369,8 @@ function EclipseUI:CreateWindow(cfg)
         if tooltip.Visible and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local mouse = UIS:GetMouseLocation()
             local screen = gui.AbsoluteSize
-            local x = math.clamp(mouse.X + 10, 0, screen.X - tooltip.AbsoluteSize.X)
-            local y = math.clamp(mouse.Y + 15, 0, screen.Y - tooltip.AbsoluteSize.Y)
+            local x = math.clamp(mouse.X + 12, 0, screen.X - tooltip.AbsoluteSize.X)
+            local y = math.clamp(mouse.Y + 18, 0, screen.Y - tooltip.AbsoluteSize.Y)
             tooltip.Position = UDim2.fromOffset(x, y)
         end
     end)
@@ -389,13 +382,13 @@ function EclipseUI:CreateWindow(cfg)
         BackgroundColor3 = theme.panel,
         BorderSizePixel = 0,
         AnchorPoint = Vector2.new(0.5, 0),
-        Position = UDim2.new(0.5, 0, 0, 10),
-        Size = UDim2.fromOffset(200, 32),
+        Position = UDim2.new(0.5, 0, 0, 15),
+        Size = UDim2.fromOffset(240, 38),
         ZIndex = 500,
         Parent = gui
     })
-    makeRounded(hint, 6)
-    makeStroke(hint, theme.accent, 1)
+    makeRounded(hint, 8)
+    makeStroke(hint, theme.accent, 2)
     
     local hintText = create("TextLabel", {
         BackgroundTransparency = 1,
@@ -403,7 +396,7 @@ function EclipseUI:CreateWindow(cfg)
         Text = "Press " .. keycodeToString(toggleKey) .. " to open",
         TextColor3 = theme.text,
         Font = Enum.Font.GothamBold,
-        TextSize = 13,
+        TextSize = 15,
         Parent = hint
     })
     
@@ -413,32 +406,85 @@ function EclipseUI:CreateWindow(cfg)
         Visible = false,
         BackgroundColor3 = theme.accent,
         BorderSizePixel = 0,
-        Size = UDim2.fromOffset(120, 36),
+        Size = UDim2.fromOffset(140, 42),
         AnchorPoint = Vector2.new(0.5, 0),
-        Position = UDim2.new(0.5, 0, 0, 50),
+        Position = UDim2.new(0.5, 0, 0, 60),
         Text = "Open Menu",
         TextColor3 = Color3.new(1, 1, 1),
         Font = Enum.Font.GothamBold,
-        TextSize = 14,
+        TextSize = 16,
         ZIndex = 500,
         Parent = gui
     })
-    makeRounded(mobileOpenBtn, 8)
+    makeRounded(mobileOpenBtn, 10)
+    
+    -- CLOSE BUTTON (draggable, always visible when menu is open)
+    local closeBtn = create("TextButton", {
+        Name = "CloseButton",
+        BackgroundColor3 = Color3.fromRGB(200, 50, 50),
+        BorderSizePixel = 0,
+        Size = UDim2.fromOffset(50, 50),
+        Position = UDim2.new(1, -70, 1, -70),
+        Text = "✕",
+        TextColor3 = Color3.new(1, 1, 1),
+        Font = Enum.Font.GothamBold,
+        TextSize = 22,
+        ZIndex = 999,
+        Parent = gui
+    })
+    makeRounded(closeBtn, 25)
+    makeStroke(closeBtn, Color3.fromRGB(255, 100, 100), 2)
+    
+    -- Make close button draggable
+    do
+        local dragging, dragStart, startPos = false, Vector2.new(), closeBtn.Position
+        
+        closeBtn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                dragStart = input.Position
+                startPos = closeBtn.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                    end
+                end)
+            end
+        end)
+        
+        UIS.InputChanged:Connect(function(input)
+            if not dragging then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+            local delta = input.Position - dragStart
+            closeBtn.Position = UDim2.new(
+                startPos.X.Scale, math.floor(startPos.X.Offset + delta.X + 0.5),
+                startPos.Y.Scale, math.floor(startPos.Y.Offset + delta.Y + 0.5)
+            )
+        end)
+    end
     
     -- UI visibility state
     local uiVisible = true
     
     local function updateHintText()
         hintText.Text = "Press " .. keycodeToString(toggleKey) .. " to open"
-        local sz = getTextSize(hintText.Text, 13, Enum.Font.GothamBold)
-        hint.Size = UDim2.fromOffset(sz.X + 24, 32)
+        local sz = getTextSize(hintText.Text, 15, Enum.Font.GothamBold)
+        hint.Size = UDim2.fromOffset(sz.X + 30, 38)
     end
     
     local function setUIVisible(visible)
         uiVisible = visible
         panelContainer.Visible = visible
+        closeBtn.Visible = visible
         hint.Visible = not visible
         mobileOpenBtn.Visible = not visible and Config.isMobile
+        
+        -- Animate overlay
+        if visible then
+            tween(overlay, { BackgroundTransparency = 1 - overlayOpacity }, 0.25)
+        else
+            tween(overlay, { BackgroundTransparency = 1 }, 0.2)
+        end
     end
     
     -- Toggle key listener
@@ -453,6 +499,13 @@ function EclipseUI:CreateWindow(cfg)
         setUIVisible(true)
     end)
     
+    closeBtn.MouseButton1Click:Connect(function()
+        setUIVisible(false)
+    end)
+    
+    -- Initial overlay state
+    overlay.BackgroundTransparency = 1 - overlayOpacity
+    
     --=========================================================================
     -- WINDOW OBJECT & METHODS
     --=========================================================================
@@ -463,6 +516,7 @@ function EclipseUI:CreateWindow(cfg)
         _panels = {},
         _toggleKey = toggleKey,
         _notifyPosition = notifyPosition,
+        _connections = { toggleConn },
     }
     setmetatable(window, { __index = EclipseUI })
     
@@ -479,40 +533,49 @@ function EclipseUI:CreateWindow(cfg)
             AutomaticSize = Enum.AutomaticSize.Y,
             Parent = notifContainer
         })
-        makeRounded(notif, 6)
+        makeRounded(notif, 8)
+        makeStroke(notif, theme.stroke, 1)
         
         local accentBar = create("Frame", {
             BackgroundColor3 = theme.accent,
             BorderSizePixel = 0,
-            Size = UDim2.new(0, 3, 1, 0),
+            Size = UDim2.new(0, 4, 1, 0),
             Parent = notif
         })
+        makeRounded(accentBar, 2)
         
-        create("UIPadding", { Parent = notif, PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 8) })
+        -- Increased left padding to avoid text touching the accent bar
+        create("UIPadding", { 
+            Parent = notif, 
+            PaddingTop = UDim.new(0, 10), 
+            PaddingBottom = UDim.new(0, 10), 
+            PaddingLeft = UDim.new(0, 18),  -- More space from accent bar
+            PaddingRight = UDim.new(0, 12) 
+        })
         
         local notifLabel = create("TextLabel", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, -20, 0, 0),
+            Size = UDim2.new(1, -24, 0, 0),
             AutomaticSize = Enum.AutomaticSize.Y,
             Position = UDim2.fromOffset(0, 0),
             Text = tostring(text),
             TextColor3 = theme.text,
             Font = Enum.Font.Gotham,
-            TextSize = 13,
+            TextSize = 14,
             TextWrapped = true,
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = notif
         })
         
         -- Close button
-        local closeBtn = create("TextButton", {
+        local closeBtnNotif = create("TextButton", {
             BackgroundTransparency = 1,
-            Size = UDim2.fromOffset(16, 16),
-            Position = UDim2.new(1, -16, 0, 0),
+            Size = UDim2.fromOffset(20, 20),
+            Position = UDim2.new(1, -20, 0, 0),
             Text = "×",
             TextColor3 = theme.textDim,
             Font = Enum.Font.GothamBold,
-            TextSize = 16,
+            TextSize = 18,
             Parent = notif
         })
         
@@ -534,7 +597,7 @@ function EclipseUI:CreateWindow(cfg)
             end)
         end
         
-        closeBtn.MouseButton1Click:Connect(dismiss)
+        closeBtnNotif.MouseButton1Click:Connect(dismiss)
         task.delay(duration, function()
             if notif and notif.Parent then dismiss() end
         end)
@@ -564,6 +627,11 @@ function EclipseUI:CreateWindow(cfg)
         if Themes[themeName] then
             publishTheme(Themes[themeName])
             window.Theme = CurrentTheme
+            theme = CurrentTheme
+            
+            -- Update overlay color
+            overlay.BackgroundColor3 = CurrentTheme.overlay
+            
             window:Notify("Theme changed to " .. themeName, 2)
         end
     end
@@ -578,10 +646,35 @@ function EclipseUI:CreateWindow(cfg)
     end
     
     --=========================================================================
+    -- SET UI SCALE
+    --=========================================================================
+    function window:SetScale(scale)
+        Config.uiScale = math.clamp(scale, 0.5, 2.0)
+        uiScaleObj.Scale = Config.uiScale
+    end
+    
+    --=========================================================================
+    -- TOGGLE VISIBILITY
+    --=========================================================================
+    function window:Toggle()
+        setUIVisible(not uiVisible)
+    end
+    
+    function window:Show()
+        setUIVisible(true)
+    end
+    
+    function window:Hide()
+        setUIVisible(false)
+    end
+    
+    --=========================================================================
     -- DESTROY
     --=========================================================================
     function window:Destroy()
-        if toggleConn then toggleConn:Disconnect() end
+        for _, conn in ipairs(window._connections) do
+            if conn then pcall(function() conn:Disconnect() end) end
+        end
         if gui then gui:Destroy() end
     end
     
@@ -590,20 +683,20 @@ function EclipseUI:CreateWindow(cfg)
     --=========================================================================
     function window:AddPanel(name, position)
         local theme = CurrentTheme
-        local panelWidth = Config.panelWidth
+        local panelWidth = scaled(Config.panelWidth)
         
         -- Adjust for mobile
         if Config.isMobile then
             panelWidth = math.min(panelWidth, gui.AbsoluteSize.X * 0.45)
         end
         
-        position = position or UDim2.fromOffset(10 + (#window._panels * (panelWidth + 10)), 10)
+        position = position or UDim2.fromOffset(15 + (#window._panels * (panelWidth + 15)), 15)
         
         local panel = create("Frame", {
             Name = "Panel_" .. name,
             BackgroundColor3 = theme.panel,
             BorderSizePixel = 0,
-            Size = UDim2.fromOffset(panelWidth, Config.headerHeight),
+            Size = UDim2.fromOffset(panelWidth, scaled(Config.headerHeight)),
             Position = position,
             AutomaticSize = Enum.AutomaticSize.Y,
             Parent = panelContainer
@@ -616,19 +709,19 @@ function EclipseUI:CreateWindow(cfg)
             Name = "Header",
             BackgroundColor3 = theme.panelHeader,
             BorderSizePixel = 0,
-            Size = UDim2.new(1, 0, 0, Config.headerHeight),
+            Size = UDim2.new(1, 0, 0, scaled(Config.headerHeight)),
             Parent = panel
         })
         makeRounded(header, Config.cornerRadius)
         
         local headerTitle = create("TextLabel", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, -30, 1, 0),
-            Position = UDim2.fromOffset(8, 0),
+            Size = UDim2.new(1, -35, 1, 0),
+            Position = UDim2.fromOffset(10, 0),
             Text = name,
             TextColor3 = theme.accent,
             Font = Enum.Font.GothamBold,
-            TextSize = 13,
+            TextSize = scaled(15),
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = header
         })
@@ -636,12 +729,12 @@ function EclipseUI:CreateWindow(cfg)
         -- Collapse arrow
         local collapseBtn = create("TextButton", {
             BackgroundTransparency = 1,
-            Size = UDim2.fromOffset(20, 20),
-            Position = UDim2.new(1, -24, 0.5, -10),
+            Size = UDim2.fromOffset(24, 24),
+            Position = UDim2.new(1, -28, 0.5, -12),
             Text = "▼",
             TextColor3 = theme.textDim,
             Font = Enum.Font.GothamBold,
-            TextSize = 10,
+            TextSize = scaled(12),
             Parent = header
         })
         
@@ -650,7 +743,7 @@ function EclipseUI:CreateWindow(cfg)
             Name = "Content",
             BackgroundTransparency = 1,
             Size = UDim2.new(1, 0, 0, 0),
-            Position = UDim2.fromOffset(0, Config.headerHeight),
+            Position = UDim2.fromOffset(0, scaled(Config.headerHeight)),
             AutomaticSize = Enum.AutomaticSize.Y,
             ClipsDescendants = true,
             Parent = panel
@@ -659,15 +752,15 @@ function EclipseUI:CreateWindow(cfg)
         create("UIListLayout", {
             Parent = content,
             SortOrder = Enum.SortOrder.LayoutOrder,
-            Padding = UDim.new(0, 2)
+            Padding = UDim.new(0, 3)
         })
         
         create("UIPadding", {
             Parent = content,
-            PaddingTop = UDim.new(0, 4),
-            PaddingBottom = UDim.new(0, 4),
-            PaddingLeft = UDim.new(0, 4),
-            PaddingRight = UDim.new(0, 4)
+            PaddingTop = UDim.new(0, 6),
+            PaddingBottom = UDim.new(0, 6),
+            PaddingLeft = UDim.new(0, 6),
+            PaddingRight = UDim.new(0, 6)
         })
         
         -- Collapse state
@@ -680,7 +773,7 @@ function EclipseUI:CreateWindow(cfg)
             
             if collapsed then
                 panel.AutomaticSize = Enum.AutomaticSize.None
-                tween(panel, { Size = UDim2.fromOffset(panelWidth, Config.headerHeight) }, 0.15)
+                tween(panel, { Size = UDim2.fromOffset(panelWidth, scaled(Config.headerHeight)) }, 0.15)
             else
                 task.delay(0.15, function()
                     panel.AutomaticSize = Enum.AutomaticSize.Y
@@ -708,7 +801,7 @@ function EclipseUI:CreateWindow(cfg)
             end
         end)
         
-        UIS.InputChanged:Connect(function(input)
+        local dragConn = UIS.InputChanged:Connect(function(input)
             if not dragging then return end
             if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
             local delta = input.Position - dragStart
@@ -717,6 +810,7 @@ function EclipseUI:CreateWindow(cfg)
                 startPos.Y.Scale, math.floor(startPos.Y.Offset + delta.Y + 0.5)
             )
         end)
+        table.insert(window._connections, dragConn)
         
         -- Theme subscriber
         subscribeTheme(function(t)
@@ -751,7 +845,7 @@ function EclipseUI:CreateWindow(cfg)
             local moduleHolder = create("Frame", {
                 Name = "Module_" .. (cfg.name or "Module"),
                 BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 0, Config.moduleHeight),
+                Size = UDim2.new(1, 0, 0, scaled(Config.moduleHeight)),
                 AutomaticSize = Enum.AutomaticSize.Y,
                 Parent = content
             })
@@ -760,27 +854,27 @@ function EclipseUI:CreateWindow(cfg)
                 Name = "Row",
                 BackgroundColor3 = theme.panel,
                 BorderSizePixel = 0,
-                Size = UDim2.new(1, 0, 0, Config.moduleHeight),
+                Size = UDim2.new(1, 0, 0, scaled(Config.moduleHeight)),
                 Parent = moduleHolder
             })
-            makeRounded(moduleRow, 3)
+            makeRounded(moduleRow, 4)
             
             -- Module name/toggle
             local moduleBtn = create("TextButton", {
                 BackgroundTransparency = 1,
-                Size = UDim2.new(1, hasSettings and -20 or 0, 1, 0),
+                Size = UDim2.new(1, hasSettings and -24 or 0, 1, 0),
                 Text = "",
                 Parent = moduleRow
             })
             
             local moduleName = create("TextLabel", {
                 BackgroundTransparency = 1,
-                Size = UDim2.new(1, -8, 1, 0),
-                Position = UDim2.fromOffset(8, 0),
+                Size = UDim2.new(1, -10, 1, 0),
+                Position = UDim2.fromOffset(10, 0),
                 Text = cfg.name or "Module",
                 TextColor3 = cfg.default and theme.enabled or theme.disabled,
                 Font = Enum.Font.Gotham,
-                TextSize = 12,
+                TextSize = scaled(13),
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = moduleBtn
             })
@@ -792,12 +886,12 @@ function EclipseUI:CreateWindow(cfg)
             if hasSettings then
                 expandBtn = create("TextButton", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.fromOffset(20, Config.moduleHeight),
-                    Position = UDim2.new(1, -20, 0, 0),
+                    Size = UDim2.fromOffset(24, scaled(Config.moduleHeight)),
+                    Position = UDim2.new(1, -24, 0, 0),
                     Text = "›",
                     TextColor3 = theme.textDim,
                     Font = Enum.Font.GothamBold,
-                    TextSize = 14,
+                    TextSize = scaled(16),
                     Parent = moduleRow
                 })
             end
@@ -810,26 +904,26 @@ function EclipseUI:CreateWindow(cfg)
                     BackgroundColor3 = theme.bg,
                     BorderSizePixel = 0,
                     Size = UDim2.new(1, 0, 0, 0),
-                    Position = UDim2.fromOffset(0, Config.moduleHeight),
+                    Position = UDim2.fromOffset(0, scaled(Config.moduleHeight)),
                     ClipsDescendants = true,
                     Visible = false,
                     AutomaticSize = Enum.AutomaticSize.Y,
                     Parent = moduleHolder
                 })
-                makeRounded(settingsContainer, 3)
+                makeRounded(settingsContainer, 4)
                 
                 create("UIListLayout", {
                     Parent = settingsContainer,
                     SortOrder = Enum.SortOrder.LayoutOrder,
-                    Padding = UDim.new(0, 2)
+                    Padding = UDim.new(0, 3)
                 })
                 
                 create("UIPadding", {
                     Parent = settingsContainer,
-                    PaddingTop = UDim.new(0, 4),
-                    PaddingBottom = UDim.new(0, 4),
-                    PaddingLeft = UDim.new(0, 8),
-                    PaddingRight = UDim.new(0, 8)
+                    PaddingTop = UDim.new(0, 6),
+                    PaddingBottom = UDim.new(0, 6),
+                    PaddingLeft = UDim.new(0, 10),
+                    PaddingRight = UDim.new(0, 10)
                 })
             end
             
@@ -887,7 +981,7 @@ function EclipseUI:CreateWindow(cfg)
                         moduleHolder.AutomaticSize = Enum.AutomaticSize.Y
                     else
                         moduleHolder.AutomaticSize = Enum.AutomaticSize.None
-                        moduleHolder.Size = UDim2.new(1, 0, 0, Config.moduleHeight)
+                        moduleHolder.Size = UDim2.new(1, 0, 0, scaled(Config.moduleHeight))
                     end
                 end)
             end
@@ -895,7 +989,7 @@ function EclipseUI:CreateWindow(cfg)
             -- Theme subscriber
             subscribeTheme(function(t)
                 moduleRow.BackgroundColor3 = t.panel
-                updateState()
+                moduleName.TextColor3 = enabled and t.enabled or t.disabled
                 if expandBtn then expandBtn.TextColor3 = t.textDim end
                 if settingsContainer then settingsContainer.BackgroundColor3 = t.bg end
             end)
@@ -940,11 +1034,11 @@ function EclipseUI:CreateWindow(cfg)
             if settingType == "label" then
                 local label = create("TextLabel", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, Config.settingHeight),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)),
                     Text = setting.text or "",
                     TextColor3 = theme.textDim,
                     Font = Enum.Font.Gotham,
-                    TextSize = 11,
+                    TextSize = scaled(12),
                     TextXAlignment = Enum.TextXAlignment.Left,
                     TextWrapped = true,
                     AutomaticSize = Enum.AutomaticSize.Y,
@@ -965,17 +1059,17 @@ function EclipseUI:CreateWindow(cfg)
             elseif settingType == "toggle" then
                 local row = create("Frame", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, Config.settingHeight),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)),
                     Parent = container
                 })
                 
                 local label = create("TextLabel", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(1, -30, 1, 0),
+                    Size = UDim2.new(1, -36, 1, 0),
                     Text = setting.text or "Toggle",
                     TextColor3 = theme.text,
                     Font = Enum.Font.Gotham,
-                    TextSize = 11,
+                    TextSize = scaled(12),
                     TextXAlignment = Enum.TextXAlignment.Left,
                     Parent = row
                 })
@@ -983,28 +1077,28 @@ function EclipseUI:CreateWindow(cfg)
                 local toggleBtn = create("TextButton", {
                     BackgroundColor3 = setting.default and theme.enabled or theme.disabled,
                     BorderSizePixel = 0,
-                    Size = UDim2.fromOffset(24, 12),
-                    Position = UDim2.new(1, -24, 0.5, -6),
+                    Size = UDim2.fromOffset(30, 16),
+                    Position = UDim2.new(1, -30, 0.5, -8),
                     Text = "",
                     Parent = row
                 })
-                makeRounded(toggleBtn, 6)
+                makeRounded(toggleBtn, 8)
                 
                 local knob = create("Frame", {
                     BackgroundColor3 = Color3.new(1, 1, 1),
                     BorderSizePixel = 0,
-                    Size = UDim2.fromOffset(10, 10),
-                    Position = setting.default and UDim2.fromOffset(13, 1) or UDim2.fromOffset(1, 1),
+                    Size = UDim2.fromOffset(12, 12),
+                    Position = setting.default and UDim2.fromOffset(16, 2) or UDim2.fromOffset(2, 2),
                     Parent = toggleBtn
                 })
-                makeRounded(knob, 5)
+                makeRounded(knob, 6)
                 
                 local state = setting.default or false
                 
                 toggleBtn.MouseButton1Click:Connect(function()
                     state = not state
                     tween(toggleBtn, { BackgroundColor3 = state and theme.enabled or theme.disabled }, 0.1)
-                    tween(knob, { Position = state and UDim2.fromOffset(13, 1) or UDim2.fromOffset(1, 1) }, 0.1)
+                    tween(knob, { Position = state and UDim2.fromOffset(16, 2) or UDim2.fromOffset(2, 2) }, 0.1)
                     if setting.callback then task.spawn(setting.callback, state) end
                 end)
                 
@@ -1014,7 +1108,7 @@ function EclipseUI:CreateWindow(cfg)
                     Set = function(_, v)
                         state = v
                         toggleBtn.BackgroundColor3 = state and theme.enabled or theme.disabled
-                        knob.Position = state and UDim2.fromOffset(13, 1) or UDim2.fromOffset(1, 1)
+                        knob.Position = state and UDim2.fromOffset(16, 2) or UDim2.fromOffset(2, 2)
                     end,
                     Get = function() return state end
                 }
@@ -1022,29 +1116,29 @@ function EclipseUI:CreateWindow(cfg)
             elseif settingType == "slider" then
                 local row = create("Frame", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, Config.settingHeight + 12),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 14),
                     Parent = container
                 })
                 
                 local label = create("TextLabel", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(0.6, 0, 0, 14),
+                    Size = UDim2.new(0.6, 0, 0, 16),
                     Text = setting.text or "Slider",
                     TextColor3 = theme.text,
                     Font = Enum.Font.Gotham,
-                    TextSize = 11,
+                    TextSize = scaled(12),
                     TextXAlignment = Enum.TextXAlignment.Left,
                     Parent = row
                 })
                 
                 local valueLabel = create("TextLabel", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(0.4, 0, 0, 14),
+                    Size = UDim2.new(0.4, 0, 0, 16),
                     Position = UDim2.new(0.6, 0, 0, 0),
                     Text = tostring(setting.default or setting.min or 0) .. (setting.suffix or ""),
                     TextColor3 = theme.accent,
                     Font = Enum.Font.GothamBold,
-                    TextSize = 11,
+                    TextSize = scaled(12),
                     TextXAlignment = Enum.TextXAlignment.Right,
                     Parent = row
                 })
@@ -1052,11 +1146,11 @@ function EclipseUI:CreateWindow(cfg)
                 local sliderBg = create("Frame", {
                     BackgroundColor3 = theme.bg,
                     BorderSizePixel = 0,
-                    Size = UDim2.new(1, 0, 0, 8),
-                    Position = UDim2.fromOffset(0, 18),
+                    Size = UDim2.new(1, 0, 0, 10),
+                    Position = UDim2.fromOffset(0, 20),
                     Parent = row
                 })
-                makeRounded(sliderBg, 4)
+                makeRounded(sliderBg, 5)
                 
                 local sliderFill = create("Frame", {
                     BackgroundColor3 = theme.accent,
@@ -1064,7 +1158,7 @@ function EclipseUI:CreateWindow(cfg)
                     Size = UDim2.new(0, 0, 1, 0),
                     Parent = sliderBg
                 })
-                makeRounded(sliderFill, 4)
+                makeRounded(sliderFill, 5)
                 
                 local min = setting.min or 0
                 local max = setting.max or 100
@@ -1099,17 +1193,19 @@ function EclipseUI:CreateWindow(cfg)
                     end
                 end)
                 
-                UIS.InputChanged:Connect(function(input)
+                local sliderDragConn = UIS.InputChanged:Connect(function(input)
                     if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
                         updateFromInput(input)
                     end
                 end)
+                table.insert(window._connections, sliderDragConn)
                 
-                UIS.InputEnded:Connect(function(input)
+                local sliderEndConn = UIS.InputEnded:Connect(function(input)
                     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                         dragging = false
                     end
                 end)
+                table.insert(window._connections, sliderEndConn)
                 
                 if setting.tooltip then attachTooltip(row, setting.tooltip) end
                 
@@ -1122,14 +1218,14 @@ function EclipseUI:CreateWindow(cfg)
                 local btn = create("TextButton", {
                     BackgroundColor3 = theme.panelHeader,
                     BorderSizePixel = 0,
-                    Size = UDim2.new(1, 0, 0, Config.settingHeight),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)),
                     Text = setting.text or "Button",
                     TextColor3 = theme.text,
                     Font = Enum.Font.GothamBold,
-                    TextSize = 11,
+                    TextSize = scaled(12),
                     Parent = container
                 })
-                makeRounded(btn, 3)
+                makeRounded(btn, 4)
                 
                 btn.MouseEnter:Connect(function() tween(btn, { BackgroundColor3 = theme.hover }, 0.1) end)
                 btn.MouseLeave:Connect(function() tween(btn, { BackgroundColor3 = theme.panelHeader }, 0.1) end)
@@ -1145,7 +1241,7 @@ function EclipseUI:CreateWindow(cfg)
             elseif settingType == "input" then
                 local row = create("Frame", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, Config.settingHeight + 4),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 4),
                     Parent = container
                 })
                 
@@ -1155,7 +1251,7 @@ function EclipseUI:CreateWindow(cfg)
                     Text = setting.text or "Input",
                     TextColor3 = theme.text,
                     Font = Enum.Font.Gotham,
-                    TextSize = 11,
+                    TextSize = scaled(12),
                     TextXAlignment = Enum.TextXAlignment.Left,
                     Parent = row
                 })
@@ -1163,19 +1259,19 @@ function EclipseUI:CreateWindow(cfg)
                 local inputBox = create("TextBox", {
                     BackgroundColor3 = theme.bg,
                     BorderSizePixel = 0,
-                    Size = UDim2.new(0.58, 0, 0, 18),
-                    Position = UDim2.new(0.42, 0, 0.5, -9),
+                    Size = UDim2.new(0.58, 0, 0, 22),
+                    Position = UDim2.new(0.42, 0, 0.5, -11),
                     Text = setting.default or "",
                     PlaceholderText = setting.placeholder or "",
                     TextColor3 = theme.text,
                     PlaceholderColor3 = theme.textDim,
                     Font = Enum.Font.Gotham,
-                    TextSize = 11,
+                    TextSize = scaled(12),
                     ClearTextOnFocus = setting.clearOnFocus or false,
                     Parent = row
                 })
-                makeRounded(inputBox, 3)
-                create("UIPadding", { Parent = inputBox, PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) })
+                makeRounded(inputBox, 4)
+                create("UIPadding", { Parent = inputBox, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
                 
                 inputBox.FocusLost:Connect(function(enter)
                     if setting.callback then task.spawn(setting.callback, inputBox.Text) end
@@ -1191,7 +1287,7 @@ function EclipseUI:CreateWindow(cfg)
             elseif settingType == "keybind" then
                 local row = create("Frame", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, Config.settingHeight),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)),
                     Parent = container
                 })
                 
@@ -1201,7 +1297,7 @@ function EclipseUI:CreateWindow(cfg)
                     Text = setting.text or "Keybind",
                     TextColor3 = theme.text,
                     Font = Enum.Font.Gotham,
-                    TextSize = 11,
+                    TextSize = scaled(12),
                     TextXAlignment = Enum.TextXAlignment.Left,
                     Parent = row
                 })
@@ -1209,15 +1305,15 @@ function EclipseUI:CreateWindow(cfg)
                 local keyBtn = create("TextButton", {
                     BackgroundColor3 = theme.bg,
                     BorderSizePixel = 0,
-                    Size = UDim2.new(0.48, 0, 0, 16),
-                    Position = UDim2.new(0.52, 0, 0.5, -8),
+                    Size = UDim2.new(0.48, 0, 0, 20),
+                    Position = UDim2.new(0.52, 0, 0.5, -10),
                     Text = keycodeToString(setting.default or Enum.KeyCode.Unknown),
                     TextColor3 = theme.accent,
                     Font = Enum.Font.GothamBold,
-                    TextSize = 10,
+                    TextSize = scaled(11),
                     Parent = row
                 })
-                makeRounded(keyBtn, 3)
+                makeRounded(keyBtn, 4)
                 
                 local listening = false
                 local currentKey = setting.default or Enum.KeyCode.Unknown
@@ -1249,18 +1345,18 @@ function EclipseUI:CreateWindow(cfg)
             elseif settingType == "dropdown" then
                 local row = create("Frame", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, Config.settingHeight),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)),
                     AutomaticSize = Enum.AutomaticSize.Y,
                     Parent = container
                 })
                 
                 local label = create("TextLabel", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(0.4, 0, 0, Config.settingHeight),
+                    Size = UDim2.new(0.4, 0, 0, scaled(Config.settingHeight)),
                     Text = setting.text or "Dropdown",
                     TextColor3 = theme.text,
                     Font = Enum.Font.Gotham,
-                    TextSize = 11,
+                    TextSize = scaled(12),
                     TextXAlignment = Enum.TextXAlignment.Left,
                     Parent = row
                 })
@@ -1268,34 +1364,34 @@ function EclipseUI:CreateWindow(cfg)
                 local dropBtn = create("TextButton", {
                     BackgroundColor3 = theme.bg,
                     BorderSizePixel = 0,
-                    Size = UDim2.new(0.58, 0, 0, Config.settingHeight - 4),
+                    Size = UDim2.new(0.58, 0, 0, scaled(Config.settingHeight) - 4),
                     Position = UDim2.new(0.42, 0, 0, 2),
                     Text = (setting.default or setting.options[1] or "Select") .. " ▼",
                     TextColor3 = theme.text,
                     Font = Enum.Font.Gotham,
-                    TextSize = 10,
+                    TextSize = scaled(11),
                     TextTruncate = Enum.TextTruncate.AtEnd,
                     Parent = row
                 })
-                makeRounded(dropBtn, 3)
+                makeRounded(dropBtn, 4)
                 
                 local dropList = create("Frame", {
                     BackgroundColor3 = theme.bg,
                     BorderSizePixel = 0,
                     Size = UDim2.new(0.58, 0, 0, 0),
-                    Position = UDim2.new(0.42, 0, 0, Config.settingHeight),
+                    Position = UDim2.new(0.42, 0, 0, scaled(Config.settingHeight)),
                     ClipsDescendants = true,
                     Visible = false,
                     ZIndex = 100,
                     Parent = row
                 })
-                makeRounded(dropList, 3)
+                makeRounded(dropList, 4)
                 makeStroke(dropList, theme.stroke)
                 
                 create("UIListLayout", {
                     Parent = dropList,
                     SortOrder = Enum.SortOrder.LayoutOrder,
-                    Padding = UDim.new(0, 1)
+                    Padding = UDim.new(0, 2)
                 })
                 
                 local options = setting.options or {}
@@ -1311,11 +1407,11 @@ function EclipseUI:CreateWindow(cfg)
                         local optBtn = create("TextButton", {
                             BackgroundColor3 = theme.panel,
                             BorderSizePixel = 0,
-                            Size = UDim2.new(1, 0, 0, 18),
+                            Size = UDim2.new(1, 0, 0, 22),
                             Text = opt,
                             TextColor3 = theme.text,
                             Font = Enum.Font.Gotham,
-                            TextSize = 10,
+                            TextSize = scaled(11),
                             ZIndex = 101,
                             Parent = dropList
                         })
@@ -1328,7 +1424,7 @@ function EclipseUI:CreateWindow(cfg)
                             dropBtn.Text = value .. " ▼"
                             open = false
                             dropList.Visible = false
-                            row.Size = UDim2.new(1, 0, 0, Config.settingHeight)
+                            row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight))
                             if setting.callback then task.spawn(setting.callback, value) end
                         end)
                     end
@@ -1341,11 +1437,11 @@ function EclipseUI:CreateWindow(cfg)
                     dropBtn.Text = value .. (open and " ▲" or " ▼")
                     
                     if open then
-                        local listH = math.min(#options * 19, 100)
+                        local listH = math.min(#options * 24, 120)
                         dropList.Size = UDim2.new(0.58, 0, 0, listH)
-                        row.Size = UDim2.new(1, 0, 0, Config.settingHeight + listH + 4)
+                        row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + listH + 6)
                     else
-                        row.Size = UDim2.new(1, 0, 0, Config.settingHeight)
+                        row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight))
                     end
                 end)
                 
@@ -1434,7 +1530,24 @@ function EclipseUI:CreateWindow(cfg)
     --=========================================================================
     -- CREATE DEFAULT SETTINGS PANEL
     --=========================================================================
-    local settingsPanel = window:AddPanel("⚙ Settings", UDim2.new(1, -200, 0, 10))
+    local settingsPanel = window:AddPanel("⚙ Settings", UDim2.new(1, -240, 0, 15))
+    
+    -- UI Scale slider
+    settingsPanel:AddSlider({
+        text = "UI Scale",
+        min = 0.6,
+        max = 1.8,
+        step = 0.1,
+        default = 1.0,
+        rounding = 1,
+        suffix = "x",
+        tooltip = "Scale the UI size for readability",
+        callback = function(v)
+            window:SetScale(v)
+        end
+    })
+    
+    settingsPanel:AddDivider()
     
     -- UI Toggle Key
     settingsPanel:AddKeybind({
@@ -1496,9 +1609,25 @@ function EclipseUI:CreateWindow(cfg)
         end
     })
     
+    settingsPanel:AddDivider()
+    
+    -- Destroy UI button
+    settingsPanel:AddButton({
+        name = "🗑 Destroy UI",
+        type = "button",
+        tooltip = "Completely removes the UI from the game",
+        notify = false,
+        callback = function()
+            window:Notify("UI will be destroyed in 1 second...", 1)
+            task.delay(1, function()
+                window:Destroy()
+            end)
+        end
+    })
+    
     -- Welcome notification
     task.defer(function()
-        window:Notify("EclipseUI v2.0 loaded • Press " .. keycodeToString(toggleKey) .. " to toggle", 4)
+        window:Notify("EclipseUI v2.1 loaded • Press " .. keycodeToString(toggleKey) .. " to toggle", 4)
     end)
     
     return window
