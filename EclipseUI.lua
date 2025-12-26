@@ -38,7 +38,6 @@ local Config = {
     uiScale = 1.0,
     baseTextSize = 14,
     saveFileName = "EclipseUI_Settings.json",
-    snapDistance = 15, -- Distance for panel snapping
     debugMode = false,
 }
 
@@ -384,7 +383,7 @@ function EclipseUI:CreateWindow(cfg)
     local showArrayList = cfg.ArrayList ~= false -- Default: true
     local showSplash = cfg.SplashScreen ~= false -- Default: true
     local enableBlur = cfg.BlurEffect ~= false -- Default: true
-    local enableSnapping = cfg.PanelSnapping ~= false -- Default: true
+    -- Panel snapping removed (was causing bugs)
     local autoHideOnChat = cfg.AutoHideOnChat ~= false -- Default: true
     local splashTitle = cfg.SplashTitle or "EclipseUI"
     local splashSubtitle = cfg.SplashSubtitle or "Loading..."
@@ -607,7 +606,7 @@ function EclipseUI:CreateWindow(cfg)
                 BackgroundColor3 = theme.panel,
                 BackgroundTransparency = 0.3,
                 BorderSizePixel = 0,
-                Size = UDim2.fromOffset(sz.X + 16, 22),
+                Size = UDim2.fromOffset(sz.X + 24, 24), -- More width for spacing
                 LayoutOrder = i,
                 Parent = arrayList
             })
@@ -622,10 +621,11 @@ function EclipseUI:CreateWindow(cfg)
                 Parent = label
             })
             
+            -- Text with proper spacing from accent bar
             create("TextLabel", {
                 BackgroundTransparency = 1,
-                Size = UDim2.new(1, -8, 1, 0),
-                Position = UDim2.fromOffset(6, 0),
+                Size = UDim2.new(1, -18, 1, 0), -- More padding: 8px left + 10px from bar
+                Position = UDim2.fromOffset(8, 0),
                 Text = name,
                 TextColor3 = theme.text,
                 Font = Enum.Font.GothamBold,
@@ -1692,35 +1692,21 @@ function EclipseUI:CreateWindow(cfg)
             end)
         end
         
-        local function getSnappedPosition(x, y)
+        local function getClampedPosition(x, y)
             local screenSize = gui.AbsoluteSize / Config.uiScale
             local panelSize = panel.AbsoluteSize / Config.uiScale
             
             -- Safety check: ensure we have valid sizes
             if screenSize.X <= 0 or screenSize.Y <= 0 or panelSize.X <= 0 or panelSize.Y <= 0 then
-                return math.max(0, x), math.max(0, y)
+                return x, y -- Don't clamp if sizes are invalid
             end
             
-            -- Calculate bounds - keep full panel on screen
+            -- Keep panels on screen (simple bounds clamping, no snapping)
             local minX = 0
             local minY = 0
             local maxX = math.max(0, screenSize.X - panelSize.X)
             local maxY = math.max(0, screenSize.Y - panelSize.Y)
             
-            -- Simple edge snapping (optional soft snap to edges)
-            if enableSnapping then
-                local snapDist = Config.snapDistance
-                -- Snap to left edge
-                if x > 0 and x < snapDist then x = 0 end
-                -- Snap to top edge
-                if y > 0 and y < snapDist then y = 0 end
-                -- Snap to right edge
-                if x < maxX and x > maxX - snapDist then x = maxX end
-                -- Snap to bottom edge
-                if y < maxY and y > maxY - snapDist then y = maxY end
-            end
-            
-            -- Clamp to bounds - panels stay fully on screen
             x = math.clamp(x, minX, maxX)
             y = math.clamp(y, minY, maxY)
             
@@ -1743,7 +1729,7 @@ function EclipseUI:CreateWindow(cfg)
             local newY = startPos.Y.Offset + scaledDelta.Y
             
             -- Apply snapping
-            newX, newY = getSnappedPosition(newX, newY)
+            newX, newY = getClampedPosition(newX, newY)
             
             panel.Position = UDim2.new(
                 startPos.X.Scale, math.floor(newX + 0.5),
