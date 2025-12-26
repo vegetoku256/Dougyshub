@@ -1,6 +1,6 @@
 -- EclipseUI v2.2 — Minecraft Hack Client Style (Wurst-inspired)
 -- Pure Lua 5.1 (no Luau type annotations)
--- Mobile-friendly with touch support + Settings saving
+-- Mobile-friendly with touch support + Settings savingd
 
 local EclipseUI = {}
 EclipseUI.__index = EclipseUI
