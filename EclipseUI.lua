@@ -766,14 +766,45 @@ function EclipseUI:CreateWindow(cfg)
                 resultBtn.MouseButton1Click:Connect(function()
                     searchInput.Text = ""
                     searchResults.Visible = false
-                    if mod.instance and mod.instance.Parent then
-                        -- Flash the module to show its location
-                        local orig = mod.row.BackgroundColor3
-                        for _ = 1, 3 do
-                            mod.row.BackgroundColor3 = theme.accent
-                            task.wait(0.15)
-                            mod.row.BackgroundColor3 = orig
-                            task.wait(0.15)
+                    
+                    -- Find the element to highlight
+                    local targetElement = mod.row or mod.instance
+                    if targetElement and targetElement.Parent then
+                        -- Find parent panel and expand if collapsed
+                        local panel = targetElement:FindFirstAncestor("Panel_" .. mod.panel) or targetElement:FindFirstAncestorOfClass("Frame")
+                        
+                        -- Flash highlight animation
+                        local elementsToFlash = {}
+                        
+                        -- If it's a module holder, flash the row
+                        if mod.row and mod.row:IsA("Frame") then
+                            table.insert(elementsToFlash, mod.row)
+                        end
+                        
+                        -- Also try to find the actual row within the instance
+                        if mod.instance then
+                            local row = mod.instance:FindFirstChild("Row")
+                            if row then
+                                table.insert(elementsToFlash, row)
+                            end
+                        end
+                        
+                        -- If no specific elements found, flash the instance itself
+                        if #elementsToFlash == 0 and mod.instance and mod.instance:IsA("Frame") then
+                            table.insert(elementsToFlash, mod.instance)
+                        end
+                        
+                        -- Perform flash animation
+                        for _, elem in ipairs(elementsToFlash) do
+                            local orig = elem.BackgroundColor3
+                            task.spawn(function()
+                                for _ = 1, 3 do
+                                    elem.BackgroundColor3 = theme.accent
+                                    task.wait(0.12)
+                                    elem.BackgroundColor3 = orig
+                                    task.wait(0.12)
+                                end
+                            end)
                         end
                     end
                 end)
@@ -1310,7 +1341,7 @@ function EclipseUI:CreateWindow(cfg)
             Name = "ChangelogViewer",
             BackgroundColor3 = theme.bg,
             BorderSizePixel = 0,
-            Size = UDim2.fromOffset(400, 350),
+            Size = UDim2.fromOffset(450, 400),
             AnchorPoint = Vector2.new(0.5, 0.5),
             Position = UDim2.fromScale(0.5, 0.5),
             ZIndex = 800,
@@ -1329,12 +1360,12 @@ function EclipseUI:CreateWindow(cfg)
         
         create("TextLabel", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, -50, 1, 0),
+            Size = UDim2.new(1, -80, 1, 0),
             Position = UDim2.fromOffset(15, 0),
-            Text = "Changelog",
+            Text = "Changelog (drag header to move)",
             TextColor3 = theme.accent,
             Font = Enum.Font.GothamBold,
-            TextSize = 18,
+            TextSize = 16,
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = changelogHeader
         })
@@ -1347,17 +1378,83 @@ function EclipseUI:CreateWindow(cfg)
             TextColor3 = theme.text,
             Font = Enum.Font.GothamBold,
             TextSize = 16,
+            ZIndex = 801,
             Parent = changelogHeader
         })
         closeBtn.MouseButton1Click:Connect(function()
             changelogFrame.Visible = false
         end)
         
+        -- DRAG functionality for changelog
+        local clDragging, clDragStart, clStartPos = false, Vector2.new(), changelogFrame.Position
+        changelogHeader.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                clDragging = true
+                clDragStart = input.Position
+                clStartPos = changelogFrame.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        clDragging = false
+                    end
+                end)
+            end
+        end)
+        
+        local clDragConn = UIS.InputChanged:Connect(function(input)
+            if not clDragging then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+            local delta = input.Position - clDragStart
+            changelogFrame.Position = UDim2.new(
+                clStartPos.X.Scale, clStartPos.X.Offset + delta.X,
+                clStartPos.Y.Scale, clStartPos.Y.Offset + delta.Y
+            )
+        end)
+        table.insert(window._connections, clDragConn)
+        
+        -- RESIZE handle (bottom-right corner)
+        local resizeHandle = create("TextButton", {
+            BackgroundColor3 = theme.accent,
+            BorderSizePixel = 0,
+            Size = UDim2.fromOffset(20, 20),
+            Position = UDim2.new(1, -20, 1, -20),
+            Text = "//",
+            TextColor3 = theme.text,
+            Font = Enum.Font.GothamBold,
+            TextSize = 10,
+            ZIndex = 801,
+            Parent = changelogFrame
+        })
+        makeRounded(resizeHandle, 4)
+        
+        local resizing, resizeStart, startSize = false, Vector2.new(), changelogFrame.Size
+        resizeHandle.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                resizing = true
+                resizeStart = input.Position
+                startSize = changelogFrame.Size
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        resizing = false
+                    end
+                end)
+            end
+        end)
+        
+        local resizeConn = UIS.InputChanged:Connect(function(input)
+            if not resizing then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+            local delta = input.Position - resizeStart
+            local newW = math.clamp(startSize.X.Offset + delta.X, 300, 800)
+            local newH = math.clamp(startSize.Y.Offset + delta.Y, 200, 600)
+            changelogFrame.Size = UDim2.fromOffset(newW, newH)
+        end)
+        table.insert(window._connections, resizeConn)
+        
         local changelogScroll = create("ScrollingFrame", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, -20, 1, -55),
+            Size = UDim2.new(1, -20, 1, -65),
             Position = UDim2.fromOffset(10, 45),
-            ScrollBarThickness = 4,
+            ScrollBarThickness = 6,
             ScrollBarImageColor3 = theme.accent,
             CanvasSize = UDim2.new(0, 0, 0, 0),
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
@@ -1370,13 +1467,14 @@ function EclipseUI:CreateWindow(cfg)
             Padding = UDim.new(0, 15)
         })
         
-        -- Build changelog content
+        -- Build changelog content (NEWEST FIRST - use positive index for older entries)
+        local totalEntries = #changelogEntries
         for i, entry in ipairs(changelogEntries) do
             local entryFrame = create("Frame", {
                 BackgroundTransparency = 1,
                 Size = UDim2.new(1, 0, 0, 0),
                 AutomaticSize = Enum.AutomaticSize.Y,
-                LayoutOrder = -i, -- Newest first
+                LayoutOrder = i, -- First added = first shown (add newest first in script!)
                 Parent = changelogScroll
             })
             
@@ -1399,7 +1497,7 @@ function EclipseUI:CreateWindow(cfg)
                 Text = entry.changes,
                 TextColor3 = theme.text,
                 Font = Enum.Font.Gotham,
-                TextSize = 12,
+                TextSize = 13,
                 TextWrapped = true,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 RichText = true,
@@ -1558,25 +1656,24 @@ function EclipseUI:CreateWindow(cfg)
             tween(collapseBtn, { Rotation = collapsed and -90 or 0 }, 0.2, Enum.EasingStyle.Quad)
             
             if collapsed then
-                -- Collapse: animate content out then hide
-                contentHeight = measureContentHeight()
+                -- Collapse: IMMEDIATELY hide content to prevent janky text showing
+                content.Visible = false
                 panel.AutomaticSize = Enum.AutomaticSize.None
                 local currentHeight = panel.AbsoluteSize.Y / Config.uiScale
                 panel.Size = UDim2.fromOffset(panelWidth, currentHeight)
                 
-                tween(panel, { Size = UDim2.fromOffset(panelWidth, scaled(Config.headerHeight)) }, 0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-                task.delay(0.1, function()
-                    content.Visible = false
-                end)
+                tween(panel, { Size = UDim2.fromOffset(panelWidth, scaled(Config.headerHeight)) }, 0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
             else
-                -- Expand: show content then animate
-                content.Visible = true
+                -- Expand: animate panel first, then show content
                 contentHeight = measureContentHeight()
                 local targetHeight = scaled(Config.headerHeight) + contentHeight
                 
-                tween(panel, { Size = UDim2.fromOffset(panelWidth, targetHeight) }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-                task.delay(0.25, function()
-                    panel.AutomaticSize = Enum.AutomaticSize.Y
+                tween(panel, { Size = UDim2.fromOffset(panelWidth, targetHeight) }, 0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+                task.delay(0.1, function()
+                    content.Visible = true
+                    task.delay(0.15, function()
+                        panel.AutomaticSize = Enum.AutomaticSize.Y
+                    end)
                 end)
             end
         end)
@@ -1596,65 +1693,34 @@ function EclipseUI:CreateWindow(cfg)
         end
         
         local function getSnappedPosition(x, y)
-            local snapDist = Config.snapDistance
             local screenSize = gui.AbsoluteSize / Config.uiScale
             local panelSize = panel.AbsoluteSize / Config.uiScale
             
-            -- Safety check: ensure we have valid screen size
-            if screenSize.X <= 0 or screenSize.Y <= 0 then
+            -- Safety check: ensure we have valid sizes
+            if screenSize.X <= 0 or screenSize.Y <= 0 or panelSize.X <= 0 or panelSize.Y <= 0 then
                 return math.max(0, x), math.max(0, y)
             end
             
-            -- ALWAYS keep panel on screen (bounds clamping) - this runs even if snapping is disabled
-            local minX = 0
-            local minY = 0
-            local maxX = math.max(0, screenSize.X - panelSize.X)
-            local maxY = math.max(0, screenSize.Y - panelSize.Y)
+            -- Calculate bounds - keep at least header visible
+            local minX = -panelSize.X + 50 -- Allow most of panel off left, but keep 50px visible
+            local minY = 0 -- Don't allow going above screen
+            local maxX = screenSize.X - 50 -- Keep at least 50px visible on right
+            local maxY = screenSize.Y - 40 -- Keep header visible at bottom
             
-            -- If snapping is enabled, do edge snapping first
+            -- Simple edge snapping (no panel-to-panel snapping to avoid bugs)
             if enableSnapping then
-                -- Snap to screen edges (soft snap)
-                if x < snapDist then x = 0 end
-                if y < snapDist then y = 0 end
-                if x > maxX - snapDist and x < maxX + snapDist then x = maxX end
-                if y > maxY - snapDist and y < maxY + snapDist then y = maxY end
-                
-                -- Snap to other panels
-                for _, otherPanel in ipairs(window._panels) do
-                    if otherPanel.Instance ~= panel and otherPanel.Instance.Visible then
-                        local other = otherPanel.Instance
-                        local otherPos = other.AbsolutePosition / Config.uiScale
-                        local otherSize = other.AbsoluteSize / Config.uiScale
-                        
-                        -- Snap left edge to right edge of other
-                        if math.abs(x - (otherPos.X + otherSize.X)) < snapDist then
-                            x = otherPos.X + otherSize.X + 5
-                        end
-                        -- Snap right edge to left edge of other
-                        if math.abs((x + panelSize.X) - otherPos.X) < snapDist then
-                            x = otherPos.X - panelSize.X - 5
-                        end
-                        -- Snap top edge to bottom edge of other
-                        if math.abs(y - (otherPos.Y + otherSize.Y)) < snapDist then
-                            y = otherPos.Y + otherSize.Y + 5
-                        end
-                        -- Snap bottom edge to top edge of other
-                        if math.abs((y + panelSize.Y) - otherPos.Y) < snapDist then
-                            y = otherPos.Y - panelSize.Y - 5
-                        end
-                        -- Align tops
-                        if math.abs(y - otherPos.Y) < snapDist then
-                            y = otherPos.Y
-                        end
-                        -- Align lefts
-                        if math.abs(x - otherPos.X) < snapDist then
-                            x = otherPos.X
-                        end
-                    end
+                local snapDist = Config.snapDistance
+                -- Snap to left edge
+                if math.abs(x) < snapDist then x = 0 end
+                -- Snap to top edge
+                if math.abs(y) < snapDist then y = 0 end
+                -- Snap to right edge (panel right edge to screen right)
+                if math.abs(x + panelSize.X - screenSize.X) < snapDist then
+                    x = screenSize.X - panelSize.X
                 end
             end
             
-            -- FINAL: Clamp to screen bounds (never go off-screen)
+            -- Clamp to bounds
             x = math.clamp(x, minX, maxX)
             y = math.clamp(y, minY, maxY)
             
@@ -2853,63 +2919,18 @@ function EclipseUI:CreateWindow(cfg)
     -- MENU ENTRANCE ANIMATION (after splash)
     --=========================================================================
     if showSplash then
-        -- Hide panels initially
-        panelContainer.BackgroundTransparency = 1
-        for _, panel in ipairs(panelContainer:GetChildren()) do
-            if panel:IsA("Frame") then
-                panel.BackgroundTransparency = 1
-                for _, child in ipairs(panel:GetDescendants()) do
-                    if child:IsA("Frame") or child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
-                        if child:FindFirstChild("_origTransparency") == nil then
-                            local origBg = child.BackgroundTransparency
-                            local origText = child:IsA("TextLabel") and child.TextTransparency or (child:IsA("TextButton") and child.TextTransparency or nil)
-                            child:SetAttribute("_origBgTransparency", origBg)
-                            if origText then child:SetAttribute("_origTextTransparency", origText) end
-                            child.BackgroundTransparency = 1
-                            if origText then child.TextTransparency = 1 end
-                        end
-                    end
-                end
-            end
-        end
+        -- COMPLETELY hide menu until splash finishes
+        panelContainer.Visible = false
+        if searchBarFrame then searchBarFrame.Visible = false end
         
-        -- Animate panels appearing after splash
+        -- Show menu AFTER splash disappears
         task.defer(function()
-            -- Wait for splash to finish
-            task.wait(1.4)
+            -- Wait for splash to fully complete
+            task.wait(1.5)
             
-            -- Fade in all panels with staggered effect
-            local panelIndex = 0
-            for _, panel in ipairs(panelContainer:GetChildren()) do
-                if panel:IsA("Frame") and panel.Name:find("Panel_") then
-                    panelIndex = panelIndex + 1
-                    task.delay(panelIndex * 0.08, function()
-                        -- Animate panel in
-                        tween(panel, { BackgroundTransparency = 0 }, 0.25, Enum.EasingStyle.Quart)
-                        
-                        -- Animate children
-                        for _, child in ipairs(panel:GetDescendants()) do
-                            if child:IsA("Frame") or child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
-                                local origBg = child:GetAttribute("_origBgTransparency")
-                                local origText = child:GetAttribute("_origTextTransparency")
-                                if origBg then
-                                    tween(child, { BackgroundTransparency = origBg }, 0.2)
-                                end
-                                if origText and (child:IsA("TextLabel") or child:IsA("TextButton")) then
-                                    tween(child, { TextTransparency = origText }, 0.2)
-                                end
-                            end
-                        end
-                    end)
-                end
-            end
-            
-            -- Also animate search bar
-            if searchBarFrame then
-                task.delay(0.1, function()
-                    searchBarFrame.BackgroundTransparency = 0.1
-                end)
-            end
+            -- Now show the container
+            panelContainer.Visible = true
+            if searchBarFrame then searchBarFrame.Visible = true end
         end)
     end
     
