@@ -1678,26 +1678,23 @@ function EclipseUI:CreateWindow(cfg)
             end
         end)
         
-        -- Dragging (simple, no bounds clamping to avoid bugs)
+        -- Simple dragging using direct mouse delta
         local dragging = false
-        local dragStart = Vector2.new()
-        local startAbsolutePos = Vector2.new()
-        
-        local function beginDrag(input)
-            dragging = true
-            dragStart = input.Position
-            -- Store the ABSOLUTE position when drag starts (converts Scale to actual pixels)
-            startAbsolutePos = panel.AbsolutePosition
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
+        local dragOffset = Vector2.new()
         
         header.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                beginDrag(input)
+                dragging = true
+                -- Store offset from mouse to panel top-left corner
+                local mousePos = input.Position
+                local panelPos = panel.AbsolutePosition
+                dragOffset = Vector2.new(mousePos.X - panelPos.X, mousePos.Y - panelPos.Y)
+            end
+        end)
+        
+        header.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
             end
         end)
         
@@ -1705,18 +1702,12 @@ function EclipseUI:CreateWindow(cfg)
             if not dragging then return end
             if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
             
-            local delta = input.Position - dragStart
-            -- Calculate new position from absolute start position
-            local newX = (startAbsolutePos.X + delta.X) / Config.uiScale
-            local newY = (startAbsolutePos.Y + delta.Y) / Config.uiScale
+            -- Position panel so the mouse stays at the same offset from panel corner
+            local mousePos = input.Position
+            local newX = (mousePos.X - dragOffset.X) / Config.uiScale
+            local newY = (mousePos.Y - dragOffset.Y) / Config.uiScale
             
-            -- Simple bounds: keep panel header visible on screen
-            local screenSize = gui.AbsoluteSize / Config.uiScale
-            newX = math.max(-50, math.min(newX, screenSize.X - 50))
-            newY = math.max(0, math.min(newY, screenSize.Y - 40))
-            
-            -- Set position using OFFSET only (Scale = 0) to avoid UDim2 Scale issues
-            panel.Position = UDim2.fromOffset(math.floor(newX + 0.5), math.floor(newY + 0.5))
+            panel.Position = UDim2.fromOffset(math.floor(newX), math.floor(newY))
         end)
         table.insert(window._connections, dragConn)
         
