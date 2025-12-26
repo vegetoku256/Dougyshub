@@ -1,6 +1,6 @@
 -- EclipseUI v2.2 — Minecraft Hack Client Style (Wurst-inspired)
 -- Pure Lua 5.1 (no Luau type annotations)
--- Mobile-friendly with touch support + Settings savingd
+-- Mobile-friendly with touch support + Settings saving
 
 local EclipseUI = {}
 EclipseUI.__index = EclipseUI
@@ -343,6 +343,7 @@ function EclipseUI:CreateWindow(cfg)
         IgnoreGuiInset = true,
         ResetOnSpawn = false,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+        DisplayOrder = 999999,
         Parent = CoreGui
     })
     
