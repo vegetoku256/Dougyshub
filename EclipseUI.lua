@@ -404,57 +404,60 @@ function EclipseUI:CreateWindow(cfg)
     })
     
     --=========================================================================
-    -- SPLASH SCREEN
+    -- SPLASH SCREEN (Centered box, not fullscreen)
     --=========================================================================
     local splashGui
+    local menuReadyToShow = false
+    
     if showSplash then
         splashGui = create("Frame", {
             Name = "SplashScreen",
-            Size = UDim2.fromScale(1, 1),
-            BackgroundColor3 = Color3.fromRGB(10, 10, 15),
+            Size = UDim2.fromOffset(320, 160),
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromScale(0.5, 0.5),
+            BackgroundColor3 = theme.panel,
             BackgroundTransparency = 0,
             BorderSizePixel = 0,
             ZIndex = 9999,
             Parent = gui
         })
+        makeRounded(splashGui, 12)
+        makeStroke(splashGui, theme.accent, 2)
         
-        local splashCenter = create("Frame", {
-            BackgroundTransparency = 1,
-            Size = UDim2.fromOffset(300, 150),
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.fromScale(0.5, 0.5),
-            Parent = splashGui
-        })
+        -- Start slightly scaled down for animation
+        splashGui.Size = UDim2.fromOffset(0, 0)
         
         local splashTitleLabel = create("TextLabel", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 50),
+            Size = UDim2.new(1, 0, 0, 40),
+            Position = UDim2.fromOffset(0, 25),
             Text = splashTitle,
             TextColor3 = theme.accent,
             Font = Enum.Font.GothamBold,
-            TextSize = 36,
+            TextSize = 28,
             TextTransparency = 1,
-            Parent = splashCenter
+            Parent = splashGui
         })
         
         local splashSubLabel = create("TextLabel", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 24),
-            Position = UDim2.fromOffset(0, 55),
+            Size = UDim2.new(1, 0, 0, 20),
+            Position = UDim2.fromOffset(0, 70),
             Text = splashSubtitle,
             TextColor3 = theme.textDim,
             Font = Enum.Font.Gotham,
-            TextSize = 16,
+            TextSize = 14,
             TextTransparency = 1,
-            Parent = splashCenter
+            Parent = splashGui
         })
         
         local splashBar = create("Frame", {
-            BackgroundColor3 = theme.panel,
+            BackgroundColor3 = theme.bg,
             BorderSizePixel = 0,
             Size = UDim2.new(0.8, 0, 0, 6),
-            Position = UDim2.new(0.1, 0, 0, 95),
-            Parent = splashCenter
+            AnchorPoint = Vector2.new(0.5, 0),
+            Position = UDim2.new(0.5, 0, 0, 110),
+            Parent = splashGui
         })
         makeRounded(splashBar, 3)
         
@@ -466,20 +469,29 @@ function EclipseUI:CreateWindow(cfg)
         })
         makeRounded(splashProgress, 3)
         
-        -- Animate splash
+        -- Animate splash (centered box style)
         task.spawn(function()
-            tween(splashTitleLabel, { TextTransparency = 0 }, 0.3)
+            -- Pop in animation
+            tween(splashGui, { Size = UDim2.fromOffset(320, 160) }, 0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
             task.wait(0.15)
-            tween(splashSubLabel, { TextTransparency = 0 }, 0.3)
+            tween(splashTitleLabel, { TextTransparency = 0 }, 0.2)
             task.wait(0.1)
-            tween(splashProgress, { Size = UDim2.new(1, 0, 1, 0) }, 0.8, Enum.EasingStyle.Quad)
-            task.wait(1)
-            tween(splashGui, { BackgroundTransparency = 1 }, 0.3)
-            tween(splashTitleLabel, { TextTransparency = 1 }, 0.25)
-            tween(splashSubLabel, { TextTransparency = 1 }, 0.25)
-            task.wait(0.35)
+            tween(splashSubLabel, { TextTransparency = 0 }, 0.2)
+            task.wait(0.1)
+            tween(splashProgress, { Size = UDim2.new(1, 0, 1, 0) }, 0.7, Enum.EasingStyle.Quad)
+            task.wait(0.8)
+            
+            -- Fade out and shrink
+            tween(splashTitleLabel, { TextTransparency = 1 }, 0.15)
+            tween(splashSubLabel, { TextTransparency = 1 }, 0.15)
+            task.wait(0.1)
+            tween(splashGui, { Size = UDim2.fromOffset(0, 0), BackgroundTransparency = 1 }, 0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+            task.wait(0.3)
             if splashGui then splashGui:Destroy() end
+            menuReadyToShow = true
         end)
+    else
+        menuReadyToShow = true
     end
     
     --=========================================================================
@@ -632,7 +644,7 @@ function EclipseUI:CreateWindow(cfg)
     -- GLOBAL SEARCH BAR
     --=========================================================================
     local searchBarFrame, searchInput, searchResults
-    local allModules = {} -- Store references to all modules for searching
+    local allSearchItems = {} -- Store references to ALL searchable items (modules, dropdowns, sliders, etc.)
     
     if showSearchBar then
         searchBarFrame = create("Frame", {
@@ -716,9 +728,10 @@ function EclipseUI:CreateWindow(cfg)
             local matches = {}
             local lowerQuery = string.lower(query)
             
-            for _, mod in ipairs(allModules) do
-                if string.find(string.lower(mod.name), lowerQuery, 1, true) then
-                    table.insert(matches, mod)
+            -- Search through all items (modules, dropdowns, sliders, etc.)
+            for _, item in ipairs(allSearchItems) do
+                if string.find(string.lower(item.name), lowerQuery, 1, true) then
+                    table.insert(matches, item)
                 end
             end
             
@@ -729,7 +742,7 @@ function EclipseUI:CreateWindow(cfg)
             
             searchResults.Visible = true
             local resultHeight = math.min(#matches * 28, 200)
-            searchResults.Size = UDim2.new(1, 0, 0, resultHeight + 8)
+            tween(searchResults, { Size = UDim2.new(1, 0, 0, resultHeight + 8) }, 0.15)
             
             for i, mod in ipairs(matches) do
                 if i > 7 then break end -- Max 7 results
@@ -996,38 +1009,64 @@ function EclipseUI:CreateWindow(cfg)
     --=========================================================================
     if autoHideOnChat then
         local originalDisplayOrder = gui.DisplayOrder
+        local isChatActive = false
         
+        -- Try to detect chat via multiple methods
         task.spawn(function()
             while gui and gui.Parent do
                 local chatFocused = false
-                pcall(function()
-                    -- Check if player is typing in chat
-                    local chatBox = Player:WaitForChild("PlayerGui", 1)
-                    if chatBox then
-                        for _, desc in ipairs(chatBox:GetDescendants()) do
-                            if desc:IsA("TextBox") and desc:IsFocused() then
-                                chatFocused = true
-                                break
-                            end
-                        end
-                    end
-                end)
                 
-                -- Alternative: Check if any TextBox in the game is focused
-                if not chatFocused then
+                -- Method 1: Check TextService focused textbox
+                pcall(function()
                     local focused = UIS:GetFocusedTextBox()
                     if focused and not focused:IsDescendantOf(gui) then
                         chatFocused = true
                     end
+                end)
+                
+                -- Method 2: Check CoreGui chat elements
+                if not chatFocused then
+                    pcall(function()
+                        local chatGui = CoreGui:FindFirstChild("ExperienceChat") or CoreGui:FindFirstChild("Chat")
+                        if chatGui then
+                            for _, desc in ipairs(chatGui:GetDescendants()) do
+                                if desc:IsA("TextBox") and desc:IsFocused() then
+                                    chatFocused = true
+                                    break
+                                end
+                            end
+                        end
+                    end)
                 end
                 
-                if chatFocused then
-                    gui.DisplayOrder = 1
-                else
-                    gui.DisplayOrder = originalDisplayOrder
+                -- Method 3: Check PlayerGui for any focused textbox
+                if not chatFocused then
+                    pcall(function()
+                        local playerGui = Player:FindFirstChild("PlayerGui")
+                        if playerGui then
+                            for _, desc in ipairs(playerGui:GetDescendants()) do
+                                if desc:IsA("TextBox") and desc:IsFocused() then
+                                    chatFocused = true
+                                    break
+                                end
+                            end
+                        end
+                    end)
                 end
                 
-                task.wait(0.2)
+                -- Update display order based on chat state
+                if chatFocused ~= isChatActive then
+                    isChatActive = chatFocused
+                    if chatFocused then
+                        gui.DisplayOrder = 1
+                        debugLog("Chat detected - lowering UI priority")
+                    else
+                        gui.DisplayOrder = originalDisplayOrder
+                        debugLog("Chat closed - restoring UI priority")
+                    end
+                end
+                
+                task.wait(0.1) -- Check more frequently
             end
         end)
     end
@@ -1501,17 +1540,42 @@ function EclipseUI:CreateWindow(cfg)
         })
         
         local collapsed = false
+        local contentHeight = 0
+        
+        -- Track content height
+        local function measureContentHeight()
+            local layout = content:FindFirstChildOfClass("UIListLayout")
+            if layout then
+                return layout.AbsoluteContentSize.Y + 12 -- Add padding
+            end
+            return 100
+        end
         
         collapseBtn.MouseButton1Click:Connect(function()
             collapsed = not collapsed
-            collapseBtn.Text = collapsed and ">" or "v"
-            content.Visible = not collapsed
+            
+            -- Smooth rotation animation for arrow
+            tween(collapseBtn, { Rotation = collapsed and -90 or 0 }, 0.2, Enum.EasingStyle.Quad)
             
             if collapsed then
+                -- Collapse: animate content out then hide
+                contentHeight = measureContentHeight()
                 panel.AutomaticSize = Enum.AutomaticSize.None
-                tween(panel, { Size = UDim2.fromOffset(panelWidth, scaled(Config.headerHeight)) }, 0.15)
+                local currentHeight = panel.AbsoluteSize.Y / Config.uiScale
+                panel.Size = UDim2.fromOffset(panelWidth, currentHeight)
+                
+                tween(panel, { Size = UDim2.fromOffset(panelWidth, scaled(Config.headerHeight)) }, 0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+                task.delay(0.1, function()
+                    content.Visible = false
+                end)
             else
-                task.delay(0.15, function()
+                -- Expand: show content then animate
+                content.Visible = true
+                contentHeight = measureContentHeight()
+                local targetHeight = scaled(Config.headerHeight) + contentHeight
+                
+                tween(panel, { Size = UDim2.fromOffset(panelWidth, targetHeight) }, 0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+                task.delay(0.25, function()
                     panel.AutomaticSize = Enum.AutomaticSize.Y
                 end)
             end
@@ -1532,51 +1596,67 @@ function EclipseUI:CreateWindow(cfg)
         end
         
         local function getSnappedPosition(x, y)
-            if not enableSnapping then return x, y end
-            
             local snapDist = Config.snapDistance
             local screenSize = gui.AbsoluteSize / Config.uiScale
             local panelSize = panel.AbsoluteSize / Config.uiScale
             
-            -- Snap to screen edges
-            if x < snapDist then x = 0 end
-            if y < snapDist then y = 0 end
-            if x + panelSize.X > screenSize.X - snapDist then x = screenSize.X - panelSize.X end
-            if y + panelSize.Y > screenSize.Y - snapDist then y = screenSize.Y - panelSize.Y end
+            -- Safety check: ensure we have valid screen size
+            if screenSize.X <= 0 or screenSize.Y <= 0 then
+                return math.max(0, x), math.max(0, y)
+            end
             
-            -- Snap to other panels
-            for _, otherPanel in ipairs(window._panels) do
-                if otherPanel.Instance ~= panel then
-                    local other = otherPanel.Instance
-                    local otherPos = other.AbsolutePosition / Config.uiScale
-                    local otherSize = other.AbsoluteSize / Config.uiScale
-                    
-                    -- Snap left edge to right edge of other
-                    if math.abs(x - (otherPos.X + otherSize.X)) < snapDist then
-                        x = otherPos.X + otherSize.X + 5
-                    end
-                    -- Snap right edge to left edge of other
-                    if math.abs((x + panelSize.X) - otherPos.X) < snapDist then
-                        x = otherPos.X - panelSize.X - 5
-                    end
-                    -- Snap top edge to bottom edge of other
-                    if math.abs(y - (otherPos.Y + otherSize.Y)) < snapDist then
-                        y = otherPos.Y + otherSize.Y + 5
-                    end
-                    -- Snap bottom edge to top edge of other
-                    if math.abs((y + panelSize.Y) - otherPos.Y) < snapDist then
-                        y = otherPos.Y - panelSize.Y - 5
-                    end
-                    -- Align tops
-                    if math.abs(y - otherPos.Y) < snapDist then
-                        y = otherPos.Y
-                    end
-                    -- Align lefts
-                    if math.abs(x - otherPos.X) < snapDist then
-                        x = otherPos.X
+            -- ALWAYS keep panel on screen (bounds clamping) - this runs even if snapping is disabled
+            local minX = 0
+            local minY = 0
+            local maxX = math.max(0, screenSize.X - panelSize.X)
+            local maxY = math.max(0, screenSize.Y - panelSize.Y)
+            
+            -- If snapping is enabled, do edge snapping first
+            if enableSnapping then
+                -- Snap to screen edges (soft snap)
+                if x < snapDist then x = 0 end
+                if y < snapDist then y = 0 end
+                if x > maxX - snapDist and x < maxX + snapDist then x = maxX end
+                if y > maxY - snapDist and y < maxY + snapDist then y = maxY end
+                
+                -- Snap to other panels
+                for _, otherPanel in ipairs(window._panels) do
+                    if otherPanel.Instance ~= panel and otherPanel.Instance.Visible then
+                        local other = otherPanel.Instance
+                        local otherPos = other.AbsolutePosition / Config.uiScale
+                        local otherSize = other.AbsoluteSize / Config.uiScale
+                        
+                        -- Snap left edge to right edge of other
+                        if math.abs(x - (otherPos.X + otherSize.X)) < snapDist then
+                            x = otherPos.X + otherSize.X + 5
+                        end
+                        -- Snap right edge to left edge of other
+                        if math.abs((x + panelSize.X) - otherPos.X) < snapDist then
+                            x = otherPos.X - panelSize.X - 5
+                        end
+                        -- Snap top edge to bottom edge of other
+                        if math.abs(y - (otherPos.Y + otherSize.Y)) < snapDist then
+                            y = otherPos.Y + otherSize.Y + 5
+                        end
+                        -- Snap bottom edge to top edge of other
+                        if math.abs((y + panelSize.Y) - otherPos.Y) < snapDist then
+                            y = otherPos.Y - panelSize.Y - 5
+                        end
+                        -- Align tops
+                        if math.abs(y - otherPos.Y) < snapDist then
+                            y = otherPos.Y
+                        end
+                        -- Align lefts
+                        if math.abs(x - otherPos.X) < snapDist then
+                            x = otherPos.X
+                        end
                     end
                 end
             end
+            
+            -- FINAL: Clamp to screen bounds (never go off-screen)
+            x = math.clamp(x, minX, maxX)
+            y = math.clamp(y, minY, maxY)
             
             return x, y
         end
@@ -1727,18 +1807,40 @@ function EclipseUI:CreateWindow(cfg)
                 moduleName.TextColor3 = enabled and theme.enabled or theme.disabled
             end
             
-            -- Function to toggle settings expansion
+            -- Function to toggle settings expansion (with smooth animation)
             local function toggleExpand()
                 if not hasSettings then return end
                 expanded = not expanded
-                if expandBtn then expandBtn.Text = expanded and "v" or ">" end
-                settingsContainer.Visible = expanded
+                
+                -- Animate arrow rotation
+                if expandBtn then
+                    tween(expandBtn, { Rotation = expanded and 90 or 0 }, 0.15, Enum.EasingStyle.Quad)
+                end
                 
                 if expanded then
-                    moduleHolder.AutomaticSize = Enum.AutomaticSize.Y
+                    -- Show container and animate expansion
+                    settingsContainer.Visible = true
+                    settingsContainer.BackgroundTransparency = 1
+                    
+                    -- Measure target height
+                    local layout = settingsContainer:FindFirstChildOfClass("UIListLayout")
+                    local targetHeight = layout and (layout.AbsoluteContentSize.Y + 12) or 50
+                    
+                    -- Animate the container fade in
+                    tween(settingsContainer, { BackgroundTransparency = 0 }, 0.15)
+                    
+                    -- Set auto size after a brief delay
+                    task.delay(0.05, function()
+                        moduleHolder.AutomaticSize = Enum.AutomaticSize.Y
+                    end)
                 else
-                    moduleHolder.AutomaticSize = Enum.AutomaticSize.None
-                    moduleHolder.Size = UDim2.new(1, 0, 0, scaled(Config.moduleHeight))
+                    -- Animate collapse
+                    tween(settingsContainer, { BackgroundTransparency = 1 }, 0.1)
+                    task.delay(0.1, function()
+                        settingsContainer.Visible = false
+                        moduleHolder.AutomaticSize = Enum.AutomaticSize.None
+                        moduleHolder.Size = UDim2.new(1, 0, 0, scaled(Config.moduleHeight))
+                    end)
                 end
                 debugLog("Module '" .. (cfg.name or "Module") .. "' expanded: " .. tostring(expanded))
             end
@@ -1786,9 +1888,10 @@ function EclipseUI:CreateWindow(cfg)
             end
             
             -- Track module for search
-            table.insert(allModules, {
+            table.insert(allSearchItems, {
                 name = cfg.name or "Module",
                 panel = name,
+                itemType = "module",
                 instance = moduleHolder,
                 row = moduleRow
             })
@@ -2344,15 +2447,31 @@ function EclipseUI:CreateWindow(cfg)
                 
                 dropBtn.MouseButton1Click:Connect(function()
                     open = not open
-                    dropList.Visible = open
                     updateOptionVisuals()
                     
                     if open then
+                        -- Opening animation
                         local listH = math.min(#options * 26, 150)
-                        dropList.Size = UDim2.new(0.58, 0, 0, listH)
-                        row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + listH + 6)
+                        dropList.Visible = true
+                        dropList.Size = UDim2.new(0.58, 0, 0, 0)
+                        dropList.BackgroundTransparency = 1
+                        
+                        -- Animate dropdown opening
+                        tween(dropList, { 
+                            Size = UDim2.new(0.58, 0, 0, listH),
+                            BackgroundTransparency = 0 
+                        }, 0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+                        tween(row, { Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + listH + 6) }, 0.15, Enum.EasingStyle.Quart)
                     else
-                        row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight))
+                        -- Closing animation
+                        tween(dropList, { 
+                            Size = UDim2.new(0.58, 0, 0, 0),
+                            BackgroundTransparency = 1 
+                        }, 0.1, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
+                        tween(row, { Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)) }, 0.1, Enum.EasingStyle.Quart)
+                        task.delay(0.1, function()
+                            if not open then dropList.Visible = false end
+                        end)
                     end
                 end)
                 
@@ -2422,8 +2541,29 @@ function EclipseUI:CreateWindow(cfg)
             return self:AddModule(cfg)
         end
         
+        function panelObj:AddDropdown(cfg)
+            local control = self:_addSetting(content, {
+                type = "dropdown",
+                text = cfg.text or cfg.name,
+                options = cfg.options,
+                default = cfg.default,
+                multiple = cfg.multiple, -- Enable multi-select with multiple = true
+                callback = cfg.callback,
+                tooltip = cfg.tooltip
+            })
+            -- Track for search
+            table.insert(allSearchItems, {
+                name = cfg.text or cfg.name or "Dropdown",
+                panel = name,
+                itemType = "dropdown",
+                instance = content,
+                row = content
+            })
+            return control
+        end
+        
         function panelObj:AddSlider(cfg)
-            return self:_addSetting(content, {
+            local control = self:_addSetting(content, {
                 type = "slider",
                 text = cfg.text or cfg.name,
                 min = cfg.min,
@@ -2435,10 +2575,19 @@ function EclipseUI:CreateWindow(cfg)
                 callback = cfg.callback,
                 tooltip = cfg.tooltip
             })
+            -- Track for search
+            table.insert(allSearchItems, {
+                name = cfg.text or cfg.name or "Slider",
+                panel = name,
+                itemType = "slider",
+                instance = content,
+                row = content
+            })
+            return control
         end
         
         function panelObj:AddInput(cfg)
-            return self:_addSetting(content, {
+            local control = self:_addSetting(content, {
                 type = "input",
                 text = cfg.text or cfg.name,
                 default = cfg.default,
@@ -2447,28 +2596,34 @@ function EclipseUI:CreateWindow(cfg)
                 callback = cfg.callback,
                 tooltip = cfg.tooltip
             })
+            -- Track for search
+            table.insert(allSearchItems, {
+                name = cfg.text or cfg.name or "Input",
+                panel = name,
+                itemType = "input",
+                instance = content,
+                row = content
+            })
+            return control
         end
         
         function panelObj:AddKeybind(cfg)
-            return self:_addSetting(content, {
+            local control = self:_addSetting(content, {
                 type = "keybind",
                 text = cfg.text or cfg.name,
                 default = cfg.default,
                 callback = cfg.callback,
                 tooltip = cfg.tooltip
             })
-        end
-        
-        function panelObj:AddDropdown(cfg)
-            return self:_addSetting(content, {
-                type = "dropdown",
-                text = cfg.text or cfg.name,
-                options = cfg.options,
-                default = cfg.default,
-                multiple = cfg.multiple, -- Enable multi-select with multiple = true
-                callback = cfg.callback,
-                tooltip = cfg.tooltip
+            -- Track for search
+            table.insert(allSearchItems, {
+                name = cfg.text or cfg.name or "Keybind",
+                panel = name,
+                itemType = "keybind",
+                instance = content,
+                row = content
             })
+            return control
         end
         
         return panelObj
@@ -2694,9 +2849,73 @@ function EclipseUI:CreateWindow(cfg)
         window:SetArrayListPosition(SavedSettings.arrayListPosition)
     end
     
+    --=========================================================================
+    -- MENU ENTRANCE ANIMATION (after splash)
+    --=========================================================================
+    if showSplash then
+        -- Hide panels initially
+        panelContainer.BackgroundTransparency = 1
+        for _, panel in ipairs(panelContainer:GetChildren()) do
+            if panel:IsA("Frame") then
+                panel.BackgroundTransparency = 1
+                for _, child in ipairs(panel:GetDescendants()) do
+                    if child:IsA("Frame") or child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+                        if child:FindFirstChild("_origTransparency") == nil then
+                            local origBg = child.BackgroundTransparency
+                            local origText = child:IsA("TextLabel") and child.TextTransparency or (child:IsA("TextButton") and child.TextTransparency or nil)
+                            child:SetAttribute("_origBgTransparency", origBg)
+                            if origText then child:SetAttribute("_origTextTransparency", origText) end
+                            child.BackgroundTransparency = 1
+                            if origText then child.TextTransparency = 1 end
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Animate panels appearing after splash
+        task.defer(function()
+            -- Wait for splash to finish
+            task.wait(1.4)
+            
+            -- Fade in all panels with staggered effect
+            local panelIndex = 0
+            for _, panel in ipairs(panelContainer:GetChildren()) do
+                if panel:IsA("Frame") and panel.Name:find("Panel_") then
+                    panelIndex = panelIndex + 1
+                    task.delay(panelIndex * 0.08, function()
+                        -- Animate panel in
+                        tween(panel, { BackgroundTransparency = 0 }, 0.25, Enum.EasingStyle.Quart)
+                        
+                        -- Animate children
+                        for _, child in ipairs(panel:GetDescendants()) do
+                            if child:IsA("Frame") or child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+                                local origBg = child:GetAttribute("_origBgTransparency")
+                                local origText = child:GetAttribute("_origTextTransparency")
+                                if origBg then
+                                    tween(child, { BackgroundTransparency = origBg }, 0.2)
+                                end
+                                if origText and (child:IsA("TextLabel") or child:IsA("TextButton")) then
+                                    tween(child, { TextTransparency = origText }, 0.2)
+                                end
+                            end
+                        end
+                    end)
+                end
+            end
+            
+            -- Also animate search bar
+            if searchBarFrame then
+                task.delay(0.1, function()
+                    searchBarFrame.BackgroundTransparency = 0.1
+                end)
+            end
+        end)
+    end
+    
     -- Welcome notification (after splash)
     task.defer(function()
-        task.wait(showSplash and 1.5 or 0)
+        task.wait(showSplash and 2 or 0)
         local saveStatus = canSaveFiles() and "Settings will be saved" or "Settings won't save (no file access)"
         window:Notify("EclipseUI v2.3 loaded - " .. saveStatus, 4)
     end)
