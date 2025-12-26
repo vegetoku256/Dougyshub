@@ -1678,17 +1678,18 @@ function EclipseUI:CreateWindow(cfg)
             end
         end)
         
-        -- Simple dragging using direct mouse delta
+        -- Simple delta-based dragging (no coordinate conversion issues)
         local dragging = false
-        local dragOffset = Vector2.new()
+        local lastMousePos = Vector2.new()
         
         header.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                 dragging = true
-                -- Store offset from mouse to panel top-left corner
-                local mousePos = input.Position
-                local panelPos = panel.AbsolutePosition
-                dragOffset = Vector2.new(mousePos.X - panelPos.X, mousePos.Y - panelPos.Y)
+                lastMousePos = Vector2.new(input.Position.X, input.Position.Y)
+                
+                -- Convert panel to pure offset position immediately to avoid Scale issues
+                local absPos = panel.AbsolutePosition
+                panel.Position = UDim2.fromOffset(absPos.X / Config.uiScale, absPos.Y / Config.uiScale)
             end
         end)
         
@@ -1702,10 +1703,14 @@ function EclipseUI:CreateWindow(cfg)
             if not dragging then return end
             if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
             
-            -- Position panel so the mouse stays at the same offset from panel corner
-            local mousePos = input.Position
-            local newX = (mousePos.X - dragOffset.X) / Config.uiScale
-            local newY = (mousePos.Y - dragOffset.Y) / Config.uiScale
+            local mousePos = Vector2.new(input.Position.X, input.Position.Y)
+            local delta = mousePos - lastMousePos
+            lastMousePos = mousePos
+            
+            -- Move panel by delta (scaled to match coordinate system)
+            local currentPos = panel.Position
+            local newX = currentPos.X.Offset + delta.X / Config.uiScale
+            local newY = currentPos.Y.Offset + delta.Y / Config.uiScale
             
             panel.Position = UDim2.fromOffset(math.floor(newX), math.floor(newY))
         end)
