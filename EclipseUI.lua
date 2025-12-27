@@ -1867,6 +1867,7 @@ function EclipseUI:CreateWindow(cfg)
             
             -- Determine if this is a toggle or button type
             local isToggle = cfg.type == "toggle" or cfg.type == nil
+            local isButton = cfg.type == "button"
             
             -- Toggle indicator (small switch visual for toggles only)
             local toggleIndicator, toggleKnob
@@ -1889,15 +1890,34 @@ function EclipseUI:CreateWindow(cfg)
                     Parent = toggleIndicator
                 })
                 makeRounded(toggleKnob, 5)
+            elseif isButton then
+                -- Button visual indicator (accent bar on left)
+                local btnIndicator = create("Frame", {
+                    Name = "ButtonIndicator",
+                    BackgroundColor3 = theme.accent,
+                    BorderSizePixel = 0,
+                    Size = UDim2.fromOffset(4, scaled(Config.moduleHeight) - 8),
+                    Position = UDim2.new(0, 4, 0.5, -(scaled(Config.moduleHeight) - 8) / 2),
+                    Parent = moduleRow
+                })
+                makeRounded(btnIndicator, 2)
+                
+                -- Add button-style stroke
+                local btnStroke = create("UIStroke", {
+                    Color = theme.accent,
+                    Thickness = 1,
+                    Transparency = 0.5,
+                    Parent = moduleRow
+                })
             end
             
             local moduleName = create("TextLabel", {
                 BackgroundTransparency = 1,
-                Size = UDim2.new(1, isToggle and -45 or -10, 1, 0),
-                Position = UDim2.fromOffset(isToggle and 42 or 10, 0),
+                Size = UDim2.new(1, isToggle and -45 or (isButton and -20 or -10), 1, 0),
+                Position = UDim2.fromOffset(isToggle and 42 or (isButton and 12 or 10), 0),
                 Text = cfg.name or "Module",
-                TextColor3 = cfg.default and theme.enabled or theme.disabled,
-                Font = Enum.Font.Gotham,
+                TextColor3 = isButton and theme.accent or (cfg.default and theme.enabled or theme.disabled),
+                Font = isButton and Enum.Font.GothamBold or Enum.Font.Gotham,
                 TextSize = scaled(13),
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = moduleBtn
@@ -2021,6 +2041,16 @@ function EclipseUI:CreateWindow(cfg)
                     end
                 end)
             elseif cfg.type == "button" then
+                -- Enhanced button click animation
+                local baseSize = moduleRow.Size
+                moduleBtn.MouseButton1Down:Connect(function()
+                    tween(moduleRow, { Size = UDim2.new(1, -2, 0, scaled(Config.moduleHeight) - 2) }, 0.1)
+                end)
+                
+                moduleBtn.MouseButton1Up:Connect(function()
+                    tween(moduleRow, { Size = baseSize }, 0.1)
+                end)
+                
                 moduleBtn.MouseButton1Click:Connect(function()
                     if cfg.callback then
                         task.spawn(cfg.callback)
@@ -2068,7 +2098,15 @@ function EclipseUI:CreateWindow(cfg)
             -- Theme subscriber - update hover colors and toggle indicator
             subscribeTheme(function(t)
                 updateHoverColors(moduleRow, t.panel, t.hover)
-                moduleName.TextColor3 = enabled and t.enabled or t.disabled
+                if isButton then
+                    moduleName.TextColor3 = t.accent
+                    local btnIndicator = moduleRow:FindFirstChild("ButtonIndicator")
+                    if btnIndicator then btnIndicator.BackgroundColor3 = t.accent end
+                    local btnStroke = moduleRow:FindFirstChildOfClass("UIStroke")
+                    if btnStroke then btnStroke.Color = t.accent end
+                else
+                    moduleName.TextColor3 = enabled and t.enabled or t.disabled
+                end
                 if expandBtn then expandBtn.TextColor3 = t.textDim end
                 if settingsContainer then settingsContainer.BackgroundColor3 = t.bg end
                 if toggleIndicator then toggleIndicator.BackgroundColor3 = enabled and t.enabled or t.disabled end
@@ -2394,19 +2432,48 @@ function EclipseUI:CreateWindow(cfg)
                 
             elseif settingType == "button" then
                 local btn = create("TextButton", {
-                    BackgroundColor3 = theme.panelHeader,
+                    BackgroundColor3 = theme.accent,
                     BorderSizePixel = 0,
-                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 4),
                     Text = setting.text or "Button",
-                    TextColor3 = theme.text,
+                    TextColor3 = Color3.new(1, 1, 1),
                     Font = Enum.Font.GothamBold,
                     TextSize = scaled(12),
                     Parent = container
                 })
                 makeRounded(btn, 4)
                 
-                -- Track hover for button
-                trackHover(btn, theme.panelHeader, theme.hover)
+                -- Add stroke for better visibility
+                local btnStroke = create("UIStroke", {
+                    Color = theme.accentDark,
+                    Thickness = 1.5,
+                    Transparency = 0,
+                    Parent = btn
+                })
+                
+                -- Enhanced hover effect with scale animation
+                local baseColor = theme.accent
+                local hoverColor = theme.accentDark
+                local baseSize = btn.Size
+                
+                btn.MouseEnter:Connect(function()
+                    tween(btn, { BackgroundColor3 = hoverColor, Size = UDim2.new(1, 2, 0, scaled(Config.settingHeight) + 6) }, 0.15)
+                    tween(btnStroke, { Thickness = 2 }, 0.15)
+                end)
+                
+                btn.MouseLeave:Connect(function()
+                    tween(btn, { BackgroundColor3 = baseColor, Size = baseSize }, 0.15)
+                    tween(btnStroke, { Thickness = 1.5 }, 0.15)
+                end)
+                
+                -- Click animation
+                btn.MouseButton1Down:Connect(function()
+                    tween(btn, { Size = UDim2.new(1, -2, 0, scaled(Config.settingHeight) + 2) }, 0.1)
+                end)
+                
+                btn.MouseButton1Up:Connect(function()
+                    tween(btn, { Size = baseSize }, 0.1)
+                end)
                 
                 btn.MouseButton1Click:Connect(function()
                     if setting.callback then task.spawn(setting.callback) end
@@ -2424,8 +2491,13 @@ function EclipseUI:CreateWindow(cfg)
                 
                 -- Theme subscriber for button
                 subscribeTheme(function(t)
-                    updateHoverColors(btn, t.panelHeader, t.hover)
-                    btn.TextColor3 = t.text
+                    baseColor = t.accent
+                    hoverColor = t.accentDark
+                    btn.BackgroundColor3 = t.accent
+                    btnStroke.Color = t.accentDark
+                    if not btn:IsMouseOver() then
+                        btn.BackgroundColor3 = baseColor
+                    end
                 end)
                 
                 if setting.tooltip then attachTooltip(btn, setting.tooltip) end
