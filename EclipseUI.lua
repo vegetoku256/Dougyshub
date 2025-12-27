@@ -378,15 +378,15 @@ function EclipseUI:CreateWindow(cfg)
     local notifyPosition = SavedSettings.notifyPosition or cfg.NotifyPosition or "TopRight"
     local overlayOpacity = cfg.OverlayOpacity or 0.4
     
-    -- New config options
-    local showSearchBar = cfg.SearchBar ~= false -- Default: true, set SearchBar = false to disable
-    local showArrayList = cfg.ArrayList ~= false -- Default: true
-    local showSplash = cfg.SplashScreen ~= false -- Default: true
-    local enableBlur = cfg.BlurEffect ~= false -- Default: true
+    -- New config options - properly check for nil
+    local showSearchBar = cfg.SearchBar == nil and true or cfg.SearchBar -- Default: true if not specified
+    local showArrayList = cfg.ArrayList == nil and true or cfg.ArrayList -- Default: true if not specified
+    local showSplash = cfg.SplashScreen == nil and true or cfg.SplashScreen -- Default: true if not specified
+    local enableBlur = cfg.BlurEffect == nil and true or cfg.BlurEffect -- Default: true if not specified
     -- Panel snapping removed (was causing bugs)
-    local autoHideOnChat = cfg.AutoHideOnChat ~= false -- Default: true
-    local splashTitle = cfg.SplashTitle or "EclipseUI"
-    local splashSubtitle = cfg.SplashSubtitle or "Loading..."
+    local autoHideOnChat = cfg.AutoHideOnChat == nil and true or cfg.AutoHideOnChat -- Default: true if not specified
+    local splashTitle = cfg.SplashTitle or cfg.Title or "EclipseUI" -- Use Title if SplashTitle not provided
+    local splashSubtitle = cfg.SplashSubtitle or cfg.Subtitle or "Loading..."
     
     Config.debugMode = SavedSettings.debugMode or false
     
@@ -401,7 +401,7 @@ function EclipseUI:CreateWindow(cfg)
         DisplayOrder = 999999,
         Parent = CoreGui
     })
-    
+
     --=========================================================================
     -- SPLASH SCREEN (Centered box, not fullscreen)
     --=========================================================================
@@ -451,8 +451,8 @@ function EclipseUI:CreateWindow(cfg)
         })
         
         local splashBar = create("Frame", {
-            BackgroundColor3 = theme.bg,
-            BorderSizePixel = 0,
+        BackgroundColor3 = theme.bg,
+        BorderSizePixel = 0,
             Size = UDim2.new(0.8, 0, 0, 6),
             AnchorPoint = Vector2.new(0.5, 0),
             Position = UDim2.new(0.5, 0, 0, 110),
@@ -531,7 +531,7 @@ function EclipseUI:CreateWindow(cfg)
     -- Notification container
     local notifContainer = create("Frame", {
         Name = "NotificationContainer",
-        Size = UDim2.fromOffset(320, 500),
+        Size = UDim2.fromOffset(500, 600),
         BackgroundTransparency = 1,
         ZIndex = 100,
         Parent = gui
@@ -603,9 +603,9 @@ function EclipseUI:CreateWindow(cfg)
             local sz = getTextSize(name, 14, Enum.Font.GothamBold)
             local label = create("Frame", {
                 Name = name,
-                BackgroundColor3 = theme.panel,
+        BackgroundColor3 = theme.panel,
                 BackgroundTransparency = 0.3,
-                BorderSizePixel = 0,
+        BorderSizePixel = 0,
                 Size = UDim2.fromOffset(sz.X + 24, 24), -- More width for spacing
                 LayoutOrder = i,
                 Parent = arrayList
@@ -622,13 +622,13 @@ function EclipseUI:CreateWindow(cfg)
             })
             
             -- Text with proper spacing from accent bar
-            create("TextLabel", {
-                BackgroundTransparency = 1,
+    create("TextLabel", {
+        BackgroundTransparency = 1,
                 Size = UDim2.new(1, -18, 1, 0), -- More padding: 8px left + 10px from bar
                 Position = UDim2.fromOffset(8, 0),
                 Text = name,
-                TextColor3 = theme.text,
-                Font = Enum.Font.GothamBold,
+        TextColor3 = theme.text,
+        Font = Enum.Font.GothamBold,
                 TextSize = 14,
                 TextXAlignment = Enum.TextXAlignment.Right,
                 Parent = label
@@ -651,7 +651,7 @@ function EclipseUI:CreateWindow(cfg)
             Name = "SearchBar",
             BackgroundColor3 = theme.panel,
             BackgroundTransparency = 0.1,
-            BorderSizePixel = 0,
+        BorderSizePixel = 0,
             Size = UDim2.fromOffset(300, 36),
             AnchorPoint = Vector2.new(0.5, 0),
             Position = UDim2.new(0.5, 0, 0, 10),
@@ -667,7 +667,7 @@ function EclipseUI:CreateWindow(cfg)
             Size = UDim2.fromOffset(30, 36),
             Text = "?",
             TextColor3 = theme.textDim,
-            Font = Enum.Font.GothamBold,
+        Font = Enum.Font.GothamBold,
             TextSize = 16,
             Parent = searchBarFrame
         })
@@ -678,18 +678,18 @@ function EclipseUI:CreateWindow(cfg)
             Position = UDim2.fromOffset(30, 0),
             Text = "",
             PlaceholderText = "Search modules...",
-            TextColor3 = theme.text,
+        TextColor3 = theme.text,
             PlaceholderColor3 = theme.textDim,
             Font = Enum.Font.Gotham,
-            TextSize = 14,
+        TextSize = 14,
             ClearTextOnFocus = false,
             Parent = searchBarFrame
         })
         
         searchResults = create("Frame", {
             Name = "SearchResults",
-            BackgroundColor3 = theme.panel,
-            BorderSizePixel = 0,
+        BackgroundColor3 = theme.panel,
+        BorderSizePixel = 0,
             Size = UDim2.new(1, 0, 0, 0),
             Position = UDim2.fromOffset(0, 40),
             ClipsDescendants = true,
@@ -732,9 +732,9 @@ function EclipseUI:CreateWindow(cfg)
             for _, item in ipairs(allSearchItems) do
                 if string.find(string.lower(item.name), lowerQuery, 1, true) then
                     table.insert(matches, item)
-                end
-            end
-            
+        end
+    end
+
             if #matches == 0 then
                 searchResults.Visible = false
                 return
@@ -807,8 +807,8 @@ function EclipseUI:CreateWindow(cfg)
                             end)
                         end
                     end
-                end)
-            end
+            end)
+        end
         end
         
         searchInput:GetPropertyChangedSignal("Text"):Connect(function()
@@ -866,12 +866,12 @@ function EclipseUI:CreateWindow(cfg)
         task.delay(tooltipDelay, function()
             if tooltipTarget == target then
                 local mouse = UIS:GetMouseLocation()
-                local screen = gui.AbsoluteSize
+        local screen = gui.AbsoluteSize
                 local x = math.clamp(mouse.X + 12, 0, screen.X - tooltip.AbsoluteSize.X)
                 local y = math.clamp(mouse.Y + 18, 0, screen.Y - tooltip.AbsoluteSize.Y)
-                tooltip.Position = UDim2.fromOffset(x, y)
-                tooltip.Visible = true
-            end
+        tooltip.Position = UDim2.fromOffset(x, y)
+        tooltip.Visible = true
+    end
         end)
     end
     
@@ -1144,15 +1144,61 @@ function EclipseUI:CreateWindow(cfg)
     setmetatable(window, { __index = EclipseUI })
     
     --=========================================================================
-    -- NOTIFICATION SYSTEM
+    -- NOTIFICATION SYSTEM (Configurable)
     --=========================================================================
-    function window:Notify(text, duration, icon)
-        duration = duration or Config.notifyDuration
+    -- Store notification config
+    local notifyConfig = cfg.NotifyConfig or {
+        size = "medium", -- "small", "medium", "large"
+        backgroundColor = nil, -- nil = use theme.panel
+        textColor = nil, -- nil = use theme.text
+        accentColor = nil, -- nil = use theme.accent
+        fontSize = 16, -- Default font size
+        minWidth = 300, -- Minimum width
+        maxWidth = 400, -- Maximum width
+        padding = {top = 12, bottom = 12, left = 16, right = 16} -- Padding values
+    }
+    
+    -- Size presets
+    local sizePresets = {
+        small = {fontSize = 14, minWidth = 250, maxWidth = 320, padding = {top = 10, bottom = 10, left = 14, right = 14}},
+        medium = {fontSize = 16, minWidth = 300, maxWidth = 400, padding = {top = 12, bottom = 12, left = 16, right = 16}},
+        large = {fontSize = 18, minWidth = 350, maxWidth = 500, padding = {top = 14, bottom = 14, left = 18, right = 18}}
+    }
+    
+    -- Apply size preset if specified
+    if notifyConfig.size and sizePresets[notifyConfig.size] then
+        local preset = sizePresets[notifyConfig.size]
+        notifyConfig.fontSize = notifyConfig.fontSize or preset.fontSize
+        notifyConfig.minWidth = notifyConfig.minWidth or preset.minWidth
+        notifyConfig.maxWidth = notifyConfig.maxWidth or preset.maxWidth
+        notifyConfig.padding = notifyConfig.padding or preset.padding
+    end
+    
+    function window:SetNotifyConfig(config)
+        notifyConfig = config or notifyConfig
+    end
+    
+    function window:Notify(text, duration, options)
+        options = options or {}
+        duration = duration or options.duration or Config.notifyDuration
+        
+        -- Get config from options or use defaults
+        local bgColor = options.backgroundColor or notifyConfig.backgroundColor or theme.panel
+        local txtColor = options.textColor or notifyConfig.textColor or theme.text
+        local accColor = options.accentColor or notifyConfig.accentColor or theme.accent
+        local fontSize = options.fontSize or notifyConfig.fontSize or 16
+        local minW = options.minWidth or notifyConfig.minWidth or 300
+        local maxW = options.maxWidth or notifyConfig.maxWidth or 400
+        local padding = options.padding or notifyConfig.padding or {top = 12, bottom = 12, left = 16, right = 16}
+        
+        -- Calculate text size to determine notification width
+        local textSize = getTextSize(tostring(text), fontSize, Enum.Font.Gotham)
+        local notifWidth = math.clamp(textSize.X + padding.left + padding.right + 50, minW, maxW)
         
         local notif = create("Frame", {
-            BackgroundColor3 = theme.panel,
+            BackgroundColor3 = bgColor,
             BorderSizePixel = 0,
-            Size = UDim2.new(1, 0, 0, 0),
+            Size = UDim2.fromOffset(notifWidth, 0),
             AutomaticSize = Enum.AutomaticSize.Y,
             Parent = notifContainer
         })
@@ -1160,26 +1206,26 @@ function EclipseUI:CreateWindow(cfg)
         makeStroke(notif, theme.stroke, 1)
         
         local accentBar = create("Frame", {
-            BackgroundColor3 = theme.accent,
+            BackgroundColor3 = accColor,
             BorderSizePixel = 0,
-            Size = UDim2.new(0, 4, 1, 0),
+            Size = UDim2.new(0, 5, 1, 0),
             Parent = notif
         })
         makeRounded(accentBar, 2)
         
         create("UIPadding", { 
             Parent = notif, 
-            PaddingTop = UDim.new(0, 10), 
-            PaddingBottom = UDim.new(0, 10), 
-            PaddingLeft = UDim.new(0, 16),
-            PaddingRight = UDim.new(0, 12) 
+            PaddingTop = UDim.new(0, padding.top), 
+            PaddingBottom = UDim.new(0, padding.bottom), 
+            PaddingLeft = UDim.new(0, padding.left),
+            PaddingRight = UDim.new(0, padding.right) 
         })
         
         -- Position text after the accent bar
         local notifTextOffset = create("Frame", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 1, 0),
-            Position = UDim2.fromOffset(6, 0),
+            Size = UDim2.new(1, -35, 1, 0),
+            Position = UDim2.fromOffset(8, 0),
             Parent = notif
         })
         
@@ -1189,9 +1235,9 @@ function EclipseUI:CreateWindow(cfg)
             AutomaticSize = Enum.AutomaticSize.Y,
             Position = UDim2.fromOffset(0, 0),
             Text = tostring(text),
-            TextColor3 = theme.text,
+            TextColor3 = txtColor,
             Font = Enum.Font.Gotham,
-            TextSize = 14,
+            TextSize = fontSize,
             TextWrapped = true,
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = notifTextOffset
@@ -1199,12 +1245,12 @@ function EclipseUI:CreateWindow(cfg)
         
         local closeBtnNotif = create("TextButton", {
             BackgroundTransparency = 1,
-            Size = UDim2.fromOffset(20, 20),
-            Position = UDim2.new(1, -14, 0, 0),
-            Text = "x",
+            Size = UDim2.fromOffset(24, 24),
+            Position = UDim2.new(1, -20, 0, 4),
+            Text = "×",
             TextColor3 = theme.textDim,
             Font = Enum.Font.GothamBold,
-            TextSize = 16,
+            TextSize = fontSize + 2,
             Parent = notif
         })
         
@@ -1392,8 +1438,8 @@ function EclipseUI:CreateWindow(cfg)
                 clDragging = true
                 clDragStart = input.Position
                 clStartPos = changelogFrame.Position
-                input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then
+                    input.Changed:Connect(function()
+                        if input.UserInputState == Enum.UserInputState.End then
                         clDragging = false
                     end
                 end)
@@ -1695,9 +1741,9 @@ function EclipseUI:CreateWindow(cfg)
         
         header.InputEnded:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = false
-            end
-        end)
+                            dragging = false
+                        end
+                    end)
         
         local dragConn = UIS.InputChanged:Connect(function(input)
             if not dragging then return end
@@ -1945,8 +1991,8 @@ function EclipseUI:CreateWindow(cfg)
                 moduleRow.InputBegan:Connect(function(input)
                     if input.UserInputType == Enum.UserInputType.MouseButton2 then
                         toggleExpand()
-                    end
-                end)
+                        end
+                    end)
             end
             
             -- Track module for search
@@ -2001,13 +2047,18 @@ function EclipseUI:CreateWindow(cfg)
             local settingType = setting.type or "label"
             
             if settingType == "label" then
+                local isBold = setting.bold == true
+                local fontSize = setting.fontSize or 12
+                local fontColor = setting.color or theme.textDim
+                local fontFamily = isBold and Enum.Font.GothamBold or Enum.Font.Gotham
+                
                 local label = create("TextLabel", {
                     BackgroundTransparency = 1,
                     Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)),
                     Text = setting.text or "",
-                    TextColor3 = theme.textDim,
-                    Font = Enum.Font.Gotham,
-                    TextSize = scaled(12),
+                    TextColor3 = fontColor,
+                    Font = fontFamily,
+                    TextSize = scaled(fontSize),
                     TextXAlignment = Enum.TextXAlignment.Left,
                     TextWrapped = true,
                     AutomaticSize = Enum.AutomaticSize.Y,
@@ -2386,7 +2437,11 @@ function EclipseUI:CreateWindow(cfg)
                 })
                 makeRounded(dropBtn, 4)
                 
-                local dropList = create("Frame", {
+                -- Use ScrollingFrame for dropdowns with many options
+                local maxVisibleOptions = 6
+                local needsScroll = #options > maxVisibleOptions
+                
+                local dropList = create(needsScroll and "ScrollingFrame" or "Frame", {
                     BackgroundColor3 = theme.bg,
                     BorderSizePixel = 0,
                     Size = UDim2.new(0.58, 0, 0, 0),
@@ -2396,6 +2451,14 @@ function EclipseUI:CreateWindow(cfg)
                     ZIndex = 100,
                     Parent = row
                 })
+                
+                if needsScroll then
+                    dropList.ScrollBarThickness = 6
+                    dropList.ScrollBarImageColor3 = theme.accent
+                    dropList.CanvasSize = UDim2.new(0, 0, 0, 0)
+                    dropList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+                end
+                
                 makeRounded(dropList, 4)
                 makeStroke(dropList, theme.stroke)
                 
@@ -2404,10 +2467,10 @@ function EclipseUI:CreateWindow(cfg)
                     SortOrder = Enum.SortOrder.LayoutOrder,
                     Padding = UDim.new(0, 2)
                 })
-                
+
                 local open = false
                 local optionButtons = {}
-                
+
                 local function updateOptionVisuals()
                     for _, data in ipairs(optionButtons) do
                         if isMultiple then
@@ -2509,8 +2572,8 @@ function EclipseUI:CreateWindow(cfg)
                                 row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight))
                                 if setting.callback then task.spawn(setting.callback, selectedValues) end
                             end)
-                        end
                     end
+                end
                 end
                 buildOptions()
                 
@@ -2520,7 +2583,9 @@ function EclipseUI:CreateWindow(cfg)
                     
                     if open then
                         -- Opening animation
-                        local listH = math.min(#options * 26, 150)
+                        local optionHeight = isMultiple and 26 or 24
+                        local maxHeight = optionHeight * maxVisibleOptions
+                        local listH = math.min(#options * optionHeight, maxHeight)
                         dropList.Visible = true
                         dropList.Size = UDim2.new(0.58, 0, 0, 0)
                         dropList.BackgroundTransparency = 1
@@ -2565,7 +2630,7 @@ function EclipseUI:CreateWindow(cfg)
                 end)
                 
                 if setting.tooltip then attachTooltip(row, setting.tooltip) end
-                
+
                 return {
                     _row = row, -- Expose row for search tracking
                     _dropBtn = dropBtn, -- Expose button for highlighting
@@ -2945,7 +3010,7 @@ function EclipseUI:CreateWindow(cfg)
         local saveStatus = canSaveFiles() and "Settings will be saved" or "Settings won't save (no file access)"
         window:Notify("EclipseUI v2.3 loaded - " .. saveStatus, 4)
     end)
-    
+
     return window
 end
 
