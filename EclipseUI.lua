@@ -2064,7 +2064,12 @@ function EclipseUI:CreateWindow(cfg)
                 local isBold = setting.bold == true
                 local fontSize = setting.fontSize or 12
                 local fontColor = setting.color or theme.textDim
-                local fontFamily = isBold and Enum.Font.GothamBold or Enum.Font.Gotham
+                
+                -- Use RichText with <b> tags for bold text (more reliable than Font property)
+                local displayText = setting.text or ""
+                if isBold then
+                    displayText = "<b>" .. displayText .. "</b>"
+                end
                 
                 -- Calculate proper height based on font size
                 local labelHeight = math.max(scaled(fontSize + 4), scaled(Config.settingHeight))
@@ -2072,19 +2077,21 @@ function EclipseUI:CreateWindow(cfg)
                 local label = create("TextLabel", {
                     BackgroundTransparency = 1,
                     Size = UDim2.new(1, 0, 0, labelHeight),
-                    Text = setting.text or "",
+                    Text = displayText,
                     TextColor3 = fontColor,
-                    Font = fontFamily,
+                    Font = Enum.Font.Gotham, -- Always use Gotham, bold is handled by RichText
                     TextSize = fontSize, -- Use fontSize directly (not scaled)
+                    RichText = true, -- Enable RichText for bold tags
                     TextXAlignment = Enum.TextXAlignment.Left,
                     TextWrapped = true,
                     AutomaticSize = Enum.AutomaticSize.Y,
                     Parent = container
                 })
                 
-                -- Store font preferences as attributes so they persist
+                -- Store preferences as attributes
                 label:SetAttribute("IsBold", isBold)
                 label:SetAttribute("FontSize", fontSize)
+                label:SetAttribute("OriginalText", setting.text or "")
                 if setting.color then
                     label:SetAttribute("HasCustomColor", true)
                     label:SetAttribute("CustomColorR", fontColor.R)
@@ -2092,12 +2099,7 @@ function EclipseUI:CreateWindow(cfg)
                     label:SetAttribute("CustomColorB", fontColor.B)
                 end
                 
-                -- Force update font and size immediately - do it multiple times to ensure it sticks
-                label.Font = fontFamily
-                label.TextSize = fontSize
-                label.TextColor3 = fontColor
-                
-                -- Use RunService to continuously enforce font (in case something overrides it)
+                -- Use RunService to continuously enforce RichText and properties
                 local fontEnforcer
                 fontEnforcer = RunService.RenderStepped:Connect(function()
                     if not label or not label.Parent then
@@ -2107,11 +2109,28 @@ function EclipseUI:CreateWindow(cfg)
                         return
                     end
                     
-                    -- Enforce bold font if needed
-                    if label:GetAttribute("IsBold") == true and label.Font ~= Enum.Font.GothamBold then
-                        label.Font = Enum.Font.GothamBold
-                    elseif label:GetAttribute("IsBold") ~= true and label.Font ~= Enum.Font.Gotham then
-                        label.Font = Enum.Font.Gotham
+                    -- Ensure RichText is enabled
+                    if not label.RichText then
+                        label.RichText = true
+                    end
+                    
+                    -- Enforce bold text using RichText tags
+                    local originalText = label:GetAttribute("OriginalText")
+                    if originalText then
+                        local isBoldAttr = label:GetAttribute("IsBold")
+                        local currentText = label.Text
+                        local expectedText
+                        
+                        if isBoldAttr == true then
+                            expectedText = "<b>" .. originalText .. "</b>"
+                        else
+                            expectedText = originalText
+                        end
+                        
+                        -- Only update if text doesn't match (avoid infinite loops)
+                        if currentText ~= expectedText then
+                            label.Text = expectedText
+                        end
                     end
                     
                     -- Enforce font size
