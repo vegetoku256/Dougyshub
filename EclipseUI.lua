@@ -1908,7 +1908,7 @@ function EclipseUI:CreateWindow(cfg)
                 Size = UDim2.new(1, isToggle and -45 or (isButton and -20 or -10), 1, 0),
                 Position = UDim2.fromOffset(isToggle and 42 or (isButton and 12 or 10), 0),
                 Text = cfg.name or "Module",
-                TextColor3 = isButton and theme.accent or (cfg.default and theme.enabled or theme.disabled),
+                TextColor3 = isButton and theme.accent or theme.text, -- Use theme.text for toggles (same as buttons)
                 Font = isButton and Enum.Font.GothamBold or Enum.Font.Gotham,
                 TextSize = scaled(13),
                 TextXAlignment = Enum.TextXAlignment.Left,
@@ -1964,7 +1964,7 @@ function EclipseUI:CreateWindow(cfg)
             local enabled = cfg.default or false
             
             local function updateState()
-                moduleName.TextColor3 = enabled and theme.enabled or theme.disabled
+                moduleName.TextColor3 = theme.text -- Always use theme.text (same as buttons)
                 -- Animate toggle indicator if it exists
                 if toggleIndicator then
                     tween(toggleIndicator, { BackgroundColor3 = enabled and theme.enabled or theme.disabled }, 0.15)
@@ -2091,11 +2091,11 @@ function EclipseUI:CreateWindow(cfg)
             subscribeTheme(function(t)
                 updateHoverColors(moduleRow, t.panel, t.hover)
                 if isButton then
-                    moduleName.TextColor3 = t.text
+                    moduleName.TextColor3 = t.accent
                     local btnIndicator = moduleRow:FindFirstChild("ButtonIndicator")
                     if btnIndicator then btnIndicator.BackgroundColor3 = t.accent end
                 else
-                    moduleName.TextColor3 = enabled and t.enabled or t.disabled
+                    moduleName.TextColor3 = t.text -- Always use theme.text for toggles (same as buttons)
                 end
                 if expandBtn then expandBtn.TextColor3 = t.textDim end
                 if settingsContainer then settingsContainer.BackgroundColor3 = t.bg end
