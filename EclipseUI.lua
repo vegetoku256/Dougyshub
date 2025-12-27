@@ -379,7 +379,7 @@ function EclipseUI:CreateWindow(cfg)
     local overlayOpacity = cfg.OverlayOpacity or 0.4
     
     -- New config options - properly check for nil (default to true) but respect false
-    -- Simple logic: if nil, default to true; otherwise use the value directly (false stays false, true stays true)
+    -- Simple ternary: if nil, default to true; otherwise use the value directly
     local showSearchBar = cfg.SearchBar == nil and true or cfg.SearchBar
     local showArrayList = cfg.ArrayList == nil and true or cfg.ArrayList
     local showSplash = cfg.SplashScreen == nil and true or cfg.SplashScreen
