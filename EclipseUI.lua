@@ -379,13 +379,19 @@ function EclipseUI:CreateWindow(cfg)
     local overlayOpacity = cfg.OverlayOpacity or 0.4
     
     -- New config options - properly check for nil (default to true) but respect false
-    -- Use ~= false so nil defaults to true, but false is respected
-    local showSearchBar = cfg.SearchBar ~= false
-    local showArrayList = cfg.ArrayList ~= false
-    local showSplash = cfg.SplashScreen ~= false
-    local enableBlur = cfg.BlurEffect ~= false
+    -- Simple logic: if nil, default to true; otherwise use the value directly (false stays false, true stays true)
+    local showSearchBar = cfg.SearchBar == nil and true or cfg.SearchBar
+    local showArrayList = cfg.ArrayList == nil and true or cfg.ArrayList
+    local showSplash = cfg.SplashScreen == nil and true or cfg.SplashScreen
+    local enableBlur = cfg.BlurEffect == nil and true or cfg.BlurEffect
     -- Panel snapping removed (was causing bugs)
-    local autoHideOnChat = cfg.AutoHideOnChat ~= false
+    local autoHideOnChat = cfg.AutoHideOnChat == nil and true or cfg.AutoHideOnChat
+    
+    -- Debug log to verify config values (only if debug mode is on)
+    if Config.debugMode then
+        debugLog("Config - SearchBar: " .. tostring(cfg.SearchBar) .. " -> showSearchBar: " .. tostring(showSearchBar))
+        debugLog("Config - SplashTitle: " .. tostring(cfg.SplashTitle) .. ", Title: " .. tostring(cfg.Title))
+    end
     local splashTitle = cfg.SplashTitle or cfg.Title or "EclipseUI" -- Use Title if SplashTitle not provided
     local splashSubtitle = cfg.SplashSubtitle or cfg.Subtitle or "Loading..."
     
