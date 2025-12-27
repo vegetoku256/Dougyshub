@@ -1891,24 +1891,16 @@ function EclipseUI:CreateWindow(cfg)
                 })
                 makeRounded(toggleKnob, 5)
             elseif isButton then
-                -- Button visual indicator (accent bar on left)
+                -- Subtle button visual indicator (thin accent bar on left)
                 local btnIndicator = create("Frame", {
                     Name = "ButtonIndicator",
                     BackgroundColor3 = theme.accent,
                     BorderSizePixel = 0,
-                    Size = UDim2.fromOffset(4, scaled(Config.moduleHeight) - 8),
-                    Position = UDim2.new(0, 4, 0.5, -(scaled(Config.moduleHeight) - 8) / 2),
+                    Size = UDim2.fromOffset(2, scaled(Config.moduleHeight) - 10),
+                    Position = UDim2.new(0, 4, 0.5, -(scaled(Config.moduleHeight) - 10) / 2),
                     Parent = moduleRow
                 })
-                makeRounded(btnIndicator, 2)
-                
-                -- Add button-style stroke
-                local btnStroke = create("UIStroke", {
-                    Color = theme.accent,
-                    Thickness = 1,
-                    Transparency = 0.5,
-                    Parent = moduleRow
-                })
+                makeRounded(btnIndicator, 1)
             end
             
             local moduleName = create("TextLabel", {
@@ -2099,11 +2091,9 @@ function EclipseUI:CreateWindow(cfg)
             subscribeTheme(function(t)
                 updateHoverColors(moduleRow, t.panel, t.hover)
                 if isButton then
-                    moduleName.TextColor3 = t.accent
+                    moduleName.TextColor3 = t.text
                     local btnIndicator = moduleRow:FindFirstChild("ButtonIndicator")
                     if btnIndicator then btnIndicator.BackgroundColor3 = t.accent end
-                    local btnStroke = moduleRow:FindFirstChildOfClass("UIStroke")
-                    if btnStroke then btnStroke.Color = t.accent end
                 else
                     moduleName.TextColor3 = enabled and t.enabled or t.disabled
                 end
@@ -2432,43 +2422,45 @@ function EclipseUI:CreateWindow(cfg)
                 
             elseif settingType == "button" then
                 local btn = create("TextButton", {
-                    BackgroundColor3 = theme.accent,
+                    BackgroundColor3 = theme.panelHeader,
                     BorderSizePixel = 0,
-                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 4),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 2),
                     Text = setting.text or "Button",
-                    TextColor3 = Color3.new(1, 1, 1),
-                    Font = Enum.Font.GothamBold,
+                    TextColor3 = theme.text,
+                    Font = Enum.Font.Gotham,
                     TextSize = scaled(12),
                     Parent = container
                 })
                 makeRounded(btn, 4)
                 
-                -- Add stroke for better visibility
-                local btnStroke = create("UIStroke", {
-                    Color = theme.accentDark,
-                    Thickness = 1.5,
-                    Transparency = 0,
+                -- Subtle accent bar on left (instead of full background)
+                local accentBar = create("Frame", {
+                    BackgroundColor3 = theme.accent,
+                    BorderSizePixel = 0,
+                    Size = UDim2.fromOffset(3, scaled(Config.settingHeight) - 4),
+                    Position = UDim2.new(0, 4, 0.5, -(scaled(Config.settingHeight) - 4) / 2),
                     Parent = btn
                 })
+                makeRounded(accentBar, 1)
                 
-                -- Enhanced hover effect with scale animation
-                local baseColor = theme.accent
-                local hoverColor = theme.accentDark
-                local baseSize = btn.Size
+                -- Subtle hover effect
+                local baseColor = theme.panelHeader
+                local hoverColor = theme.hover
                 
                 btn.MouseEnter:Connect(function()
-                    tween(btn, { BackgroundColor3 = hoverColor, Size = UDim2.new(1, 2, 0, scaled(Config.settingHeight) + 6) }, 0.15)
-                    tween(btnStroke, { Thickness = 2 }, 0.15)
+                    tween(btn, { BackgroundColor3 = hoverColor }, 0.15)
+                    tween(accentBar, { Size = UDim2.fromOffset(4, scaled(Config.settingHeight) - 2) }, 0.15)
                 end)
                 
                 btn.MouseLeave:Connect(function()
-                    tween(btn, { BackgroundColor3 = baseColor, Size = baseSize }, 0.15)
-                    tween(btnStroke, { Thickness = 1.5 }, 0.15)
+                    tween(btn, { BackgroundColor3 = baseColor }, 0.15)
+                    tween(accentBar, { Size = UDim2.fromOffset(3, scaled(Config.settingHeight) - 4) }, 0.15)
                 end)
                 
-                -- Click animation
+                -- Subtle click animation
+                local baseSize = btn.Size
                 btn.MouseButton1Down:Connect(function()
-                    tween(btn, { Size = UDim2.new(1, -2, 0, scaled(Config.settingHeight) + 2) }, 0.1)
+                    tween(btn, { Size = UDim2.new(1, -1, 0, scaled(Config.settingHeight)) }, 0.1)
                 end)
                 
                 btn.MouseButton1Up:Connect(function()
@@ -2491,10 +2483,11 @@ function EclipseUI:CreateWindow(cfg)
                 
                 -- Theme subscriber for button
                 subscribeTheme(function(t)
-                    baseColor = t.accent
-                    hoverColor = t.accentDark
-                    btn.BackgroundColor3 = t.accent
-                    btnStroke.Color = t.accentDark
+                    baseColor = t.panelHeader
+                    hoverColor = t.hover
+                    btn.BackgroundColor3 = t.panelHeader
+                    btn.TextColor3 = t.text
+                    if accentBar then accentBar.BackgroundColor3 = t.accent end
                     if not btn:IsMouseOver() then
                         btn.BackgroundColor3 = baseColor
                     end
