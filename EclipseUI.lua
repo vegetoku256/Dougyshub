@@ -378,13 +378,14 @@ function EclipseUI:CreateWindow(cfg)
     local notifyPosition = SavedSettings.notifyPosition or cfg.NotifyPosition or "TopRight"
     local overlayOpacity = cfg.OverlayOpacity or 0.4
     
-    -- New config options - properly check for nil
-    local showSearchBar = cfg.SearchBar == nil and true or cfg.SearchBar -- Default: true if not specified
-    local showArrayList = cfg.ArrayList == nil and true or cfg.ArrayList -- Default: true if not specified
-    local showSplash = cfg.SplashScreen == nil and true or cfg.SplashScreen -- Default: true if not specified
-    local enableBlur = cfg.BlurEffect == nil and true or cfg.BlurEffect -- Default: true if not specified
+    -- New config options - properly check for nil (default to true) but respect false
+    -- Use ~= false so nil defaults to true, but false is respected
+    local showSearchBar = cfg.SearchBar ~= false
+    local showArrayList = cfg.ArrayList ~= false
+    local showSplash = cfg.SplashScreen ~= false
+    local enableBlur = cfg.BlurEffect ~= false
     -- Panel snapping removed (was causing bugs)
-    local autoHideOnChat = cfg.AutoHideOnChat == nil and true or cfg.AutoHideOnChat -- Default: true if not specified
+    local autoHideOnChat = cfg.AutoHideOnChat ~= false
     local splashTitle = cfg.SplashTitle or cfg.Title or "EclipseUI" -- Use Title if SplashTitle not provided
     local splashSubtitle = cfg.SplashSubtitle or cfg.Subtitle or "Loading..."
     
@@ -394,7 +395,7 @@ function EclipseUI:CreateWindow(cfg)
     
     -- Main ScreenGui
     local gui = create("ScreenGui", {
-        Name = "EclipseUI_v2",
+        Name = cfg.Title or "EclipseUI_v2",
         IgnoreGuiInset = true,
         ResetOnSpawn = false,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
