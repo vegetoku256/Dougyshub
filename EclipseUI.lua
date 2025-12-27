@@ -1963,7 +1963,14 @@ function EclipseUI:CreateWindow(cfg)
                         task.spawn(cfg.callback, enabled)
                     end
                     if cfg.notify then
-                        window:Notify(cfg.name .. (enabled and " enabled" or " disabled"), 2)
+                        local notifyMsg = cfg.notifyText or (cfg.name .. (enabled and " enabled" or " disabled"))
+                        local notifyDur = cfg.notifyDuration or 2
+                        local notifyOpts = cfg.notifyConfig
+                        if notifyOpts == "default" or notifyOpts == nil then
+                            window:Notify(notifyMsg, notifyDur)
+                        else
+                            window:Notify(notifyMsg, notifyDur, notifyOpts)
+                        end
                     end
                 end)
             elseif cfg.type == "button" then
@@ -1972,7 +1979,14 @@ function EclipseUI:CreateWindow(cfg)
                         task.spawn(cfg.callback)
                     end
                     if cfg.notify then
-                        window:Notify(cfg.notifyText or (cfg.name .. " activated"), 2)
+                        local notifyMsg = cfg.notifyText or (cfg.name .. " activated")
+                        local notifyDur = cfg.notifyDuration or 2
+                        local notifyOpts = cfg.notifyConfig
+                        if notifyOpts == "default" or notifyOpts == nil then
+                            window:Notify(notifyMsg, notifyDur)
+                        else
+                            window:Notify(notifyMsg, notifyDur, notifyOpts)
+                        end
                     end
                 end)
             end
@@ -2052,18 +2066,81 @@ function EclipseUI:CreateWindow(cfg)
                 local fontColor = setting.color or theme.textDim
                 local fontFamily = isBold and Enum.Font.GothamBold or Enum.Font.Gotham
                 
+                -- Calculate proper height based on font size
+                local labelHeight = math.max(scaled(fontSize + 4), scaled(Config.settingHeight))
+                
                 local label = create("TextLabel", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)),
+                    Size = UDim2.new(1, 0, 0, labelHeight),
                     Text = setting.text or "",
                     TextColor3 = fontColor,
                     Font = fontFamily,
-                    TextSize = scaled(fontSize),
+                    TextSize = fontSize, -- Use fontSize directly (not scaled)
                     TextXAlignment = Enum.TextXAlignment.Left,
                     TextWrapped = true,
                     AutomaticSize = Enum.AutomaticSize.Y,
                     Parent = container
                 })
+                
+                -- Store font preferences as attributes so they persist
+                label:SetAttribute("IsBold", isBold)
+                label:SetAttribute("FontSize", fontSize)
+                if setting.color then
+                    label:SetAttribute("HasCustomColor", true)
+                    label:SetAttribute("CustomColorR", fontColor.R)
+                    label:SetAttribute("CustomColorG", fontColor.G)
+                    label:SetAttribute("CustomColorB", fontColor.B)
+                end
+                
+                -- Force update font and size immediately - do it multiple times to ensure it sticks
+                label.Font = fontFamily
+                label.TextSize = fontSize
+                label.TextColor3 = fontColor
+                
+                -- Use RunService to continuously enforce font (in case something overrides it)
+                local fontEnforcer
+                fontEnforcer = RunService.RenderStepped:Connect(function()
+                    if not label or not label.Parent then
+                        if fontEnforcer then
+                            fontEnforcer:Disconnect()
+                        end
+                        return
+                    end
+                    
+                    -- Enforce bold font if needed
+                    if label:GetAttribute("IsBold") == true and label.Font ~= Enum.Font.GothamBold then
+                        label.Font = Enum.Font.GothamBold
+                    elseif label:GetAttribute("IsBold") ~= true and label.Font ~= Enum.Font.Gotham then
+                        label.Font = Enum.Font.Gotham
+                    end
+                    
+                    -- Enforce font size
+                    local savedSize = label:GetAttribute("FontSize")
+                    if savedSize and label.TextSize ~= savedSize then
+                        label.TextSize = savedSize
+                    end
+                    
+                    -- Enforce custom color if set
+                    if label:GetAttribute("HasCustomColor") == true then
+                        local r = label:GetAttribute("CustomColorR")
+                        local g = label:GetAttribute("CustomColorG")
+                        local b = label:GetAttribute("CustomColorB")
+                        if r and g and b then
+                            local customColor = Color3.new(r, g, b)
+                            if label.TextColor3 ~= customColor then
+                                label.TextColor3 = customColor
+                            end
+                        end
+                    end
+                end)
+                
+                -- Clean up connection when label is destroyed
+                label.AncestryChanged:Connect(function()
+                    if not label.Parent and fontEnforcer then
+                        fontEnforcer:Disconnect()
+                    end
+                end)
+                
                 if setting.tooltip then attachTooltip(label, setting.tooltip) end
                 return label
                 
@@ -2254,7 +2331,16 @@ function EclipseUI:CreateWindow(cfg)
                 
                 btn.MouseButton1Click:Connect(function()
                     if setting.callback then task.spawn(setting.callback) end
-                    if setting.notify then window:Notify(setting.notifyText or (setting.text .. " clicked"), 2) end
+                    if setting.notify then
+                        local notifyMsg = setting.notifyText or (setting.text .. " clicked")
+                        local notifyDur = setting.notifyDuration or 2
+                        local notifyOpts = setting.notifyConfig
+                        if notifyOpts == "default" or notifyOpts == nil then
+                            window:Notify(notifyMsg, notifyDur)
+                        else
+                            window:Notify(notifyMsg, notifyDur, notifyOpts)
+                        end
+                    end
                 end)
                 
                 -- Theme subscriber for button
@@ -2659,8 +2745,16 @@ function EclipseUI:CreateWindow(cfg)
         --=====================================================================
         -- SHORTHAND METHODS
         --=====================================================================
-        function panelObj:AddLabel(text, tooltip)
-            return self:_addSetting(content, { type = "label", text = text, tooltip = tooltip })
+        function panelObj:AddLabel(text, tooltip, formatOptions)
+            formatOptions = formatOptions or {}
+            return self:_addSetting(content, { 
+                type = "label", 
+                text = text, 
+                tooltip = tooltip,
+                bold = formatOptions.bold,
+                fontSize = formatOptions.fontSize,
+                color = formatOptions.color
+            })
         end
         
         function panelObj:AddDivider()
