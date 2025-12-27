@@ -1367,6 +1367,43 @@ function EclipseUI:CreateWindow(cfg)
     -- DESTROY
     --=========================================================================
     function window:Destroy()
+        -- First, untoggle all enabled toggles by calling their callbacks
+        debugLog("Untoggling all active modules before destroy...")
+        local modulesToUntoggle = {}
+        
+        -- Collect all enabled toggle modules first
+        for _, panel in ipairs(window._panels) do
+            if panel._modules then
+                for _, module in ipairs(panel._modules) do
+                    pcall(function()
+                        -- Check if module is a toggle and is enabled
+                        if module._isToggle and module.Get and module.Set and module.Instance then
+                            local isEnabled = module:Get()
+                            if isEnabled then
+                                local moduleName = module.Instance.Name
+                                table.insert(modulesToUntoggle, module)
+                                debugLog("Will untoggle: " .. moduleName)
+                            end
+                        end
+                    end)
+                end
+            end
+        end
+        
+        -- Now untoggle them by calling their callbacks
+        for _, module in ipairs(modulesToUntoggle) do
+            pcall(function()
+                -- Trigger the callback with false to properly disable the feature
+                module:TriggerCallback(false)
+                -- Also update the visual state
+                module:Set(false)
+            end)
+        end
+        
+        -- Wait a brief moment for callbacks to execute and cleanup
+        task.wait(0.3)
+        
+        -- Now destroy connections and UI
         for _, conn in ipairs(window._connections) do
             if conn then pcall(function() conn:Disconnect() end) end
         end
@@ -2042,15 +2079,28 @@ function EclipseUI:CreateWindow(cfg)
                 Row = moduleRow,
                 SettingsContainer = settingsContainer,
                 _controls = {},
+                _callback = cfg.callback, -- Store callback for destroy functionality
+                _isToggle = isToggle, -- Store if this is a toggle
             }
             
             function moduleObj:Set(val)
                 enabled = val
                 updateState()
+                -- Also update ArrayList
+                if self._isToggle then
+                    setModuleActive(cfg.name or "Module", enabled)
+                end
             end
             
             function moduleObj:Get()
                 return enabled
+            end
+            
+            -- Method to trigger the callback (for destroy functionality)
+            function moduleObj:TriggerCallback(val)
+                if self._callback then
+                    task.spawn(self._callback, val)
+                end
             end
             
             if hasSettings and settingsContainer then
