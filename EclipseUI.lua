@@ -2166,7 +2166,7 @@ function EclipseUI:CreateWindow(cfg)
                     BackgroundTransparency = 1,
                     Size = UDim2.new(1, 0, 0, labelHeight),
                     Text = displayText,
-                    TextColor3 = fontColor,
+                    TextColor3 = fontColor or theme.text, -- Use theme.text as default
                     Font = Enum.Font.Gotham, -- Always use Gotham, bold is handled by RichText
                     TextSize = fontSize, -- Use fontSize directly (not scaled)
                     RichText = true, -- Enable RichText for bold tags
@@ -2271,7 +2271,7 @@ function EclipseUI:CreateWindow(cfg)
                     BackgroundTransparency = 1,
                     Size = UDim2.new(1, -36, 1, 0),
                     Text = setting.text or "Toggle",
-                    TextColor3 = theme.text,
+                    TextColor3 = theme.text, -- Consistent text color
                     Font = Enum.Font.Gotham,
                     TextSize = scaled(12),
                     TextXAlignment = Enum.TextXAlignment.Left,
