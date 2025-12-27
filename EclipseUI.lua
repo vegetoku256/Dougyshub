@@ -2434,13 +2434,14 @@ function EclipseUI:CreateWindow(cfg)
             elseif settingType == "input" then
                 local row = create("Frame", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 4),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 26),
+                    AutomaticSize = Enum.AutomaticSize.Y,
                     Parent = container
                 })
                 
                 local label = create("TextLabel", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(0.4, 0, 1, 0),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)),
                     Text = setting.text or "Input",
                     TextColor3 = theme.text,
                     Font = Enum.Font.Gotham,
@@ -2452,8 +2453,8 @@ function EclipseUI:CreateWindow(cfg)
                 local inputBox = create("TextBox", {
                     BackgroundColor3 = theme.bg,
                     BorderSizePixel = 0,
-                    Size = UDim2.new(0.58, 0, 0, 22),
-                    Position = UDim2.new(0.42, 0, 0.5, -11),
+                    Size = UDim2.new(1, 0, 0, 22),
+                    Position = UDim2.new(0, 0, 0, scaled(Config.settingHeight) + 4),
                     Text = setting.default or "",
                     PlaceholderText = setting.placeholder or "",
                     TextColor3 = theme.text,
@@ -2461,6 +2462,7 @@ function EclipseUI:CreateWindow(cfg)
                     Font = Enum.Font.Gotham,
                     TextSize = scaled(12),
                     ClearTextOnFocus = setting.clearOnFocus or false,
+                    TextTruncate = Enum.TextTruncate.AtEnd,
                     Parent = row
                 })
                 makeRounded(inputBox, 4)
@@ -2542,14 +2544,14 @@ function EclipseUI:CreateWindow(cfg)
             elseif settingType == "dropdown" then
                 local row = create("Frame", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 26),
                     AutomaticSize = Enum.AutomaticSize.Y,
                     Parent = container
                 })
                 
                 local label = create("TextLabel", {
                     BackgroundTransparency = 1,
-                    Size = UDim2.new(0.4, 0, 0, scaled(Config.settingHeight)),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)),
                     Text = setting.text or "Dropdown",
                     TextColor3 = theme.text,
                     Font = Enum.Font.Gotham,
@@ -2591,8 +2593,8 @@ function EclipseUI:CreateWindow(cfg)
                 local dropBtn = create("TextButton", {
                     BackgroundColor3 = theme.bg,
                     BorderSizePixel = 0,
-                    Size = UDim2.new(0.58, 0, 0, scaled(Config.settingHeight) - 4),
-                    Position = UDim2.new(0.42, 0, 0, 2),
+                    Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) - 4),
+                    Position = UDim2.new(0, 0, 0, scaled(Config.settingHeight) + 4),
                     Text = getDisplayText() .. " v",
                     TextColor3 = theme.text,
                     Font = Enum.Font.Gotham,
@@ -2609,8 +2611,8 @@ function EclipseUI:CreateWindow(cfg)
                 local dropList = create(needsScroll and "ScrollingFrame" or "Frame", {
                     BackgroundColor3 = theme.bg,
                     BorderSizePixel = 0,
-                    Size = UDim2.new(0.58, 0, 0, 0),
-                    Position = UDim2.new(0.42, 0, 0, scaled(Config.settingHeight)),
+                    Size = UDim2.new(1, 0, 0, 0),
+                    Position = UDim2.new(0, 0, 0, scaled(Config.settingHeight) * 2 + 4),
                     ClipsDescendants = true,
                     Visible = false,
                     ZIndex = 100,
@@ -2734,7 +2736,7 @@ function EclipseUI:CreateWindow(cfg)
                                 dropBtn.Text = selectedValues .. " v"
                                 open = false
                                 dropList.Visible = false
-                                row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight))
+                                row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 26)
                                 if setting.callback then task.spawn(setting.callback, selectedValues) end
                             end)
                     end
@@ -2752,22 +2754,22 @@ function EclipseUI:CreateWindow(cfg)
                         local maxHeight = optionHeight * maxVisibleOptions
                         local listH = math.min(#options * optionHeight, maxHeight)
                         dropList.Visible = true
-                        dropList.Size = UDim2.new(0.58, 0, 0, 0)
+                        dropList.Size = UDim2.new(1, 0, 0, 0)
                         dropList.BackgroundTransparency = 1
                         
                         -- Animate dropdown opening
                         tween(dropList, { 
-                            Size = UDim2.new(0.58, 0, 0, listH),
+                            Size = UDim2.new(1, 0, 0, listH),
                             BackgroundTransparency = 0 
                         }, 0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-                        tween(row, { Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + listH + 6) }, 0.15, Enum.EasingStyle.Quart)
+                        tween(row, { Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 26 + listH + 6) }, 0.15, Enum.EasingStyle.Quart)
                     else
                         -- Closing animation
                         tween(dropList, { 
-                            Size = UDim2.new(0.58, 0, 0, 0),
+                            Size = UDim2.new(1, 0, 0, 0),
                             BackgroundTransparency = 1 
                         }, 0.1, Enum.EasingStyle.Quart, Enum.EasingDirection.In)
-                        tween(row, { Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight)) }, 0.1, Enum.EasingStyle.Quart)
+                        tween(row, { Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 26) }, 0.1, Enum.EasingStyle.Quart)
                         task.delay(0.1, function()
                             if not open then dropList.Visible = false end
                         end)
