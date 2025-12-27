@@ -387,13 +387,16 @@ function EclipseUI:CreateWindow(cfg)
     -- Panel snapping removed (was causing bugs)
     local autoHideOnChat = cfg.AutoHideOnChat == nil and true or cfg.AutoHideOnChat
     
-    -- Debug log to verify config values (only if debug mode is on)
-    if Config.debugMode then
-        debugLog("Config - SearchBar: " .. tostring(cfg.SearchBar) .. " -> showSearchBar: " .. tostring(showSearchBar))
-        debugLog("Config - SplashTitle: " .. tostring(cfg.SplashTitle) .. ", Title: " .. tostring(cfg.Title))
-    end
+    -- Always log config values to help debug (print to console)
+    print("[DougysUI] Config received:")
+    print("  SearchBar:", cfg.SearchBar, "-> showSearchBar:", showSearchBar)
+    print("  Title:", cfg.Title, "SplashTitle:", cfg.SplashTitle)
+    print("  Subtitle:", cfg.Subtitle, "SplashSubtitle:", cfg.SplashSubtitle)
+    
     local splashTitle = cfg.SplashTitle or cfg.Title or "EclipseUI" -- Use Title if SplashTitle not provided
     local splashSubtitle = cfg.SplashSubtitle or cfg.Subtitle or "Loading..."
+    
+    print("[DougysUI] Using splashTitle:", splashTitle, "splashSubtitle:", splashSubtitle)
     
     Config.debugMode = SavedSettings.debugMode or false
     
@@ -3120,7 +3123,7 @@ function EclipseUI:CreateWindow(cfg)
             
             -- Now show the container
             panelContainer.Visible = true
-            if searchBarFrame then searchBarFrame.Visible = true end
+            if searchBarFrame and showSearchBar then searchBarFrame.Visible = true end
         end)
     end
     
