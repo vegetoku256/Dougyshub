@@ -54,6 +54,7 @@ local SavedSettings = {
     themeColoredText = true, -- Enable theme-colored text for toggles/buttons
     toggleStates = {}, -- Store toggle states per game: { [placeId] = { [moduleName] = true/false } }
     dropdownStates = {}, -- Store dropdown states per game: { [placeId] = { [dropdownName] = value } }
+    inputStates = {}, -- Store input values per game: { [placeId] = { [inputName] = value } }
     -- Note: uiScale is NOT saved to prevent off-screen issues on reload
 }
 
@@ -84,6 +85,18 @@ local function getGameDropdownStates()
         SavedSettings.dropdownStates[placeId] = {}
     end
     return SavedSettings.dropdownStates[placeId]
+end
+
+-- Helper function to get game-specific input states
+local function getGameInputStates()
+    local placeId = getCurrentPlaceId()
+    if not SavedSettings.inputStates then
+        SavedSettings.inputStates = {}
+    end
+    if not SavedSettings.inputStates[placeId] then
+        SavedSettings.inputStates[placeId] = {}
+    end
+    return SavedSettings.inputStates[placeId]
 end
 
 --=============================================================================
@@ -138,12 +151,15 @@ local function loadSettings()
                 end
             end
         end
-        -- Ensure dropdownStates and toggleStates are initialized (they might not exist in old save files)
+        -- Ensure dropdownStates, toggleStates, and inputStates are initialized (they might not exist in old save files)
         if not SavedSettings.dropdownStates then
             SavedSettings.dropdownStates = {}
         end
         if not SavedSettings.toggleStates then
             SavedSettings.toggleStates = {}
+        end
+        if not SavedSettings.inputStates then
+            SavedSettings.inputStates = {}
         end
     end)
     
@@ -2646,12 +2662,20 @@ function EclipseUI:CreateWindow(cfg)
                     Parent = row
                 })
                 
+                -- Get input name for saving (prioritize setting.name, then setting.text)
+                local inputNameStr = (setting.name or setting.text or "Input")
+                local gameInputStates = getGameInputStates()
+                
+                -- Load saved value if available, otherwise use default
+                local savedValue = gameInputStates[inputNameStr]
+                local defaultValue = savedValue ~= nil and savedValue or (setting.default or "")
+                
                 local inputBox = create("TextBox", {
                     BackgroundColor3 = theme.bg,
                     BorderSizePixel = 0,
                     Size = UDim2.new(1, 0, 0, 22),
                     Position = UDim2.new(0, 0, 0, scaled(Config.settingHeight) + 4),
-                    Text = setting.default or "",
+                    Text = defaultValue,
                     PlaceholderText = setting.placeholder or "",
                     TextColor3 = theme.text,
                     PlaceholderColor3 = theme.textDim,
@@ -2665,6 +2689,12 @@ function EclipseUI:CreateWindow(cfg)
                 create("UIPadding", { Parent = inputBox, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
                 
                 inputBox.FocusLost:Connect(function(enter)
+                    -- Save the input value
+                    gameInputStates[inputNameStr] = inputBox.Text
+                    saveSettings()
+                    debugLog("Input saved: " .. inputNameStr .. " = " .. tostring(inputBox.Text))
+                    
+                    -- Call the callback
                     if setting.callback then task.spawn(setting.callback, inputBox.Text) end
                 end)
                 
@@ -3156,6 +3186,7 @@ function EclipseUI:CreateWindow(cfg)
         function panelObj:AddInput(cfg)
             local control = self:_addSetting(content, {
                 type = "input",
+                name = cfg.name, -- Pass name for saving
                 text = cfg.text or cfg.name,
                 default = cfg.default,
                 placeholder = cfg.placeholder,
