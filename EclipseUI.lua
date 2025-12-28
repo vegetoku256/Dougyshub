@@ -53,6 +53,7 @@ local SavedSettings = {
     arrayListPosition = "Right",
     themeColoredText = true, -- Enable theme-colored text for toggles/buttons
     toggleStates = {}, -- Store toggle states per game: { [placeId] = { [moduleName] = true/false } }
+    dropdownStates = {}, -- Store dropdown states per game: { [placeId] = { [dropdownName] = value } }
     -- Note: uiScale is NOT saved to prevent off-screen issues on reload
 }
 
@@ -71,6 +72,18 @@ local function getGameToggleStates()
         SavedSettings.toggleStates[placeId] = {}
     end
     return SavedSettings.toggleStates[placeId]
+end
+
+-- Helper function to get game-specific dropdown states
+local function getGameDropdownStates()
+    local placeId = getCurrentPlaceId()
+    if not SavedSettings.dropdownStates then
+        SavedSettings.dropdownStates = {}
+    end
+    if not SavedSettings.dropdownStates[placeId] then
+        SavedSettings.dropdownStates[placeId] = {}
+    end
+    return SavedSettings.dropdownStates[placeId]
 end
 
 --=============================================================================
@@ -124,6 +137,13 @@ local function loadSettings()
                     SavedSettings[k] = v
                 end
             end
+        end
+        -- Ensure dropdownStates and toggleStates are initialized (they might not exist in old save files)
+        if not SavedSettings.dropdownStates then
+            SavedSettings.dropdownStates = {}
+        end
+        if not SavedSettings.toggleStates then
+            SavedSettings.toggleStates = {}
         end
     end)
     
@@ -2740,15 +2760,29 @@ function EclipseUI:CreateWindow(cfg)
                 local options = setting.options or {}
                 local selectedValues = {}
                 
-                -- Initialize selected values
+                -- Get dropdown name for saving/loading (prioritize name, then text)
+                local dropdownNameStr = (setting.name or setting.text) or "Dropdown"
+                local gameDropdownStates = getGameDropdownStates()
+                
+                -- Initialize selected values (check for saved state first)
                 if isMultiple then
-                    if setting.default and type(setting.default) == "table" then
+                    -- Check for saved multi-select state
+                    if gameDropdownStates[dropdownNameStr] and type(gameDropdownStates[dropdownNameStr]) == "table" then
+                        for _, v in ipairs(gameDropdownStates[dropdownNameStr]) do
+                            selectedValues[v] = true
+                        end
+                    elseif setting.default and type(setting.default) == "table" then
                         for _, v in ipairs(setting.default) do
                             selectedValues[v] = true
                         end
                     end
                 else
-                    selectedValues = setting.default or options[1] or ""
+                    -- Check for saved single-select state
+                    if gameDropdownStates[dropdownNameStr] ~= nil then
+                        selectedValues = gameDropdownStates[dropdownNameStr]
+                    else
+                        selectedValues = setting.default or options[1] or ""
+                    end
                 end
                 
                 local function getDisplayText()
@@ -2779,6 +2813,38 @@ function EclipseUI:CreateWindow(cfg)
                     Parent = row
                 })
                 makeRounded(dropBtn, 4)
+                
+                -- Call callback with saved value if it was loaded (delay slightly to ensure game is ready)
+                local wasLoadedFromSave = gameDropdownStates[dropdownNameStr] ~= nil
+                if wasLoadedFromSave and setting.callback then
+                    task.delay(0.5, function()
+                        if isMultiple then
+                            local result = {}
+                            for k, _ in pairs(selectedValues) do
+                                table.insert(result, k)
+                            end
+                            task.spawn(setting.callback, result)
+                        else
+                            task.spawn(setting.callback, selectedValues)
+                        end
+                    end)
+                end
+                
+                -- Call callback with saved value if it was loaded (delay slightly to ensure game is ready)
+                local wasLoadedFromSave = gameDropdownStates[dropdownNameStr] ~= nil
+                if wasLoadedFromSave and setting.callback then
+                    task.delay(0.5, function()
+                        if isMultiple then
+                            local result = {}
+                            for k, _ in pairs(selectedValues) do
+                                table.insert(result, k)
+                            end
+                            task.spawn(setting.callback, result)
+                        else
+                            task.spawn(setting.callback, selectedValues)
+                        end
+                    end)
+                end
                 
                 -- Use ScrollingFrame for dropdowns with many options
                 local maxVisibleOptions = 6
@@ -2882,11 +2948,15 @@ function EclipseUI:CreateWindow(cfg)
                                 selectedValues[opt] = not selectedValues[opt]
                                 if not selectedValues[opt] then selectedValues[opt] = nil end
                                 updateOptionVisuals()
+                                -- Save dropdown state (multi-select)
+                                local gameDropdownStates = getGameDropdownStates()
+                                local result = {}
+                                for k, _ in pairs(selectedValues) do
+                                    table.insert(result, k)
+                                end
+                                gameDropdownStates[dropdownNameStr] = result
+                                saveSettings()
                                 if setting.callback then
-                                    local result = {}
-                                    for k, _ in pairs(selectedValues) do
-                                        table.insert(result, k)
-                                    end
                                     task.spawn(setting.callback, result)
                                 end
                             end)
@@ -2913,6 +2983,15 @@ function EclipseUI:CreateWindow(cfg)
                                 open = false
                                 dropList.Visible = false
                                 row.Size = UDim2.new(1, 0, 0, scaled(Config.settingHeight) + 26)
+                                -- Save dropdown state (single-select)
+                                local gameDropdownStates = getGameDropdownStates()
+                                gameDropdownStates[dropdownNameStr] = selectedValues
+                                -- Ensure dropdownStates exists in SavedSettings before saving
+                                if not SavedSettings.dropdownStates then
+                                    SavedSettings.dropdownStates = {}
+                                end
+                                saveSettings()
+                                print("[Dropdown Save] '" .. dropdownNameStr .. "' = '" .. tostring(selectedValues) .. "'")
                                 if setting.callback then task.spawn(setting.callback, selectedValues) end
                             end)
                     end
@@ -3032,6 +3111,7 @@ function EclipseUI:CreateWindow(cfg)
             local control = self:_addSetting(content, {
                 type = "dropdown",
                 text = cfg.text or cfg.name,
+                name = cfg.name, -- Also pass name separately for saving
                 options = cfg.options,
                 default = cfg.default,
                 multiple = cfg.multiple, -- Enable multi-select with multiple = true
