@@ -51,6 +51,7 @@ local SavedSettings = {
     toggleKey = "RightShift",
     debugMode = false,
     arrayListPosition = "Right",
+    themeColoredText = true, -- Enable theme-colored text for toggles/buttons
     -- Note: uiScale is NOT saved to prevent off-screen issues on reload
 }
 
@@ -1911,12 +1912,24 @@ function EclipseUI:CreateWindow(cfg)
                 makeRounded(btnIndicator, 1)
             end
             
+            -- Helper function to get initial text color based on theme colored text setting
+            local function getInitialTextColor()
+                if not SavedSettings.themeColoredText then
+                    return theme.text -- Plain white when disabled
+                end
+                if isButton then
+                    return theme.accent -- Buttons always use accent
+                end
+                -- Toggles use accent when enabled, text when disabled
+                return (cfg.default and theme.accent) or theme.text
+            end
+            
             local moduleName = create("TextLabel", {
                 BackgroundTransparency = 1,
                 Size = UDim2.new(1, isToggle and -45 or (isButton and -20 or -10), 1, 0),
                 Position = UDim2.fromOffset(isToggle and 42 or (isButton and 12 or 10), 0),
                 Text = cfg.name or "Module",
-                TextColor3 = isButton and theme.accent or theme.text, -- Use theme.text for toggles (same as buttons)
+                TextColor3 = getInitialTextColor(), -- Theme-adaptive text color
                 Font = isButton and Enum.Font.GothamBold or Enum.Font.Gotham,
                 TextSize = scaled(13),
                 TextXAlignment = Enum.TextXAlignment.Left,
@@ -1972,7 +1985,16 @@ function EclipseUI:CreateWindow(cfg)
             local enabled = cfg.default or false
             
             local function updateState()
-                moduleName.TextColor3 = theme.text -- Always use theme.text (same as buttons)
+                -- Update text color based on theme colored text setting
+                if SavedSettings.themeColoredText then
+                    if isButton then
+                        moduleName.TextColor3 = theme.accent
+                    else
+                        moduleName.TextColor3 = enabled and theme.accent or theme.text
+                    end
+                else
+                    moduleName.TextColor3 = theme.text -- Plain white when setting is disabled
+                end
                 -- Animate toggle indicator if it exists (use theme.accent when enabled for theme-adaptation)
                 if toggleIndicator then
                     tween(toggleIndicator, { BackgroundColor3 = enabled and theme.accent or theme.disabled }, 0.15)
@@ -2103,13 +2125,18 @@ function EclipseUI:CreateWindow(cfg)
             -- Theme subscriber - update hover colors and toggle indicator
             subscribeTheme(function(t)
                 updateHoverColors(moduleRow, t.panel, t.hover)
-                if isButton then
-                    moduleName.TextColor3 = t.accent
-                    local btnIndicator = moduleRow:FindFirstChild("ButtonIndicator")
-                    if btnIndicator then btnIndicator.BackgroundColor3 = t.accent end
+                -- Update text color based on theme colored text setting
+                if SavedSettings.themeColoredText then
+                    if isButton then
+                        moduleName.TextColor3 = t.accent
+                    else
+                        moduleName.TextColor3 = enabled and t.accent or t.text
+                    end
                 else
-                    moduleName.TextColor3 = t.text -- Always use theme.text for toggles (same as buttons)
+                    moduleName.TextColor3 = t.text -- Plain white when setting is disabled
                 end
+                local btnIndicator = moduleRow:FindFirstChild("ButtonIndicator")
+                if btnIndicator then btnIndicator.BackgroundColor3 = t.accent end
                 if expandBtn then expandBtn.TextColor3 = t.textDim end
                 if settingsContainer then settingsContainer.BackgroundColor3 = t.bg end
                 -- Update toggle indicator with theme colors (theme-adaptive)
@@ -2129,6 +2156,8 @@ function EclipseUI:CreateWindow(cfg)
                 _controls = {},
                 _callback = cfg.callback, -- Store callback for destroy functionality
                 _isToggle = isToggle, -- Store if this is a toggle
+                _moduleName = moduleName, -- Store reference to update text color when setting changes
+                _isButton = isButton, -- Store if this is a button
             }
             
             function moduleObj:Set(val)
@@ -3194,6 +3223,43 @@ function EclipseUI:CreateWindow(cfg)
         tooltip = "Position of the active modules list",
         callback = function(v)
             window:SetArrayListPosition(v)
+        end
+    })
+    
+    settingsPanel:AddDivider()
+    
+    -- Theme Colored Text Toggle
+    settingsPanel:_addSetting(settingsPanel.Content, {
+        type = "toggle",
+        text = "Theme Colored Text",
+        default = SavedSettings.themeColoredText ~= false, -- Default to true
+        tooltip = "Enable theme-colored text for toggles and buttons (disable for plain white)",
+        callback = function(v)
+            SavedSettings.themeColoredText = v
+            saveSettings()
+            
+            -- Update all existing modules
+            for _, panel in ipairs(window._panels) do
+                if panel._modules then
+                    for _, module in ipairs(panel._modules) do
+                        if module._moduleName then
+                            local theme = CurrentTheme
+                            if SavedSettings.themeColoredText then
+                                if module._isButton then
+                                    module._moduleName.TextColor3 = theme.accent
+                                else
+                                    local isEnabled = module:Get()
+                                    module._moduleName.TextColor3 = isEnabled and theme.accent or theme.text
+                                end
+                            else
+                                module._moduleName.TextColor3 = theme.text
+                            end
+                        end
+                    end
+                end
+            end
+            
+            window:Notify("Theme colored text " .. (v and "enabled" or "disabled"), 2)
         end
     })
     
