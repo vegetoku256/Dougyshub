@@ -1874,13 +1874,21 @@ function EclipseUI:CreateWindow(cfg)
             if isToggle then
                 toggleIndicator = create("Frame", {
                     Name = "ToggleIndicator",
-                    BackgroundColor3 = cfg.default and theme.enabled or theme.disabled,
+                    BackgroundColor3 = cfg.default and theme.accent or theme.disabled, -- Use theme.accent when enabled (theme-adaptive)
                     BorderSizePixel = 0,
                     Size = UDim2.fromOffset(28, 14),
                     Position = UDim2.new(0, 8, 0.5, -7),
                     Parent = moduleRow
                 })
                 makeRounded(toggleIndicator, 7)
+                
+                -- Add subtle stroke for better visibility and theme adaptation
+                local indicatorStroke = create("UIStroke", {
+                    Color = cfg.default and theme.accentDark or theme.stroke,
+                    Thickness = 1,
+                    Transparency = 0.3,
+                    Parent = toggleIndicator
+                })
                 
                 toggleKnob = create("Frame", {
                     BackgroundColor3 = Color3.new(1, 1, 1),
@@ -1965,9 +1973,14 @@ function EclipseUI:CreateWindow(cfg)
             
             local function updateState()
                 moduleName.TextColor3 = theme.text -- Always use theme.text (same as buttons)
-                -- Animate toggle indicator if it exists
+                -- Animate toggle indicator if it exists (use theme.accent when enabled for theme-adaptation)
                 if toggleIndicator then
-                    tween(toggleIndicator, { BackgroundColor3 = enabled and theme.enabled or theme.disabled }, 0.15)
+                    tween(toggleIndicator, { BackgroundColor3 = enabled and theme.accent or theme.disabled }, 0.15)
+                    -- Update stroke color too
+                    local stroke = toggleIndicator:FindFirstChildOfClass("UIStroke")
+                    if stroke then
+                        tween(stroke, { Color = enabled and theme.accentDark or theme.stroke }, 0.15)
+                    end
                 end
                 if toggleKnob then
                     tween(toggleKnob, { Position = enabled and UDim2.fromOffset(16, 2) or UDim2.fromOffset(2, 2) }, 0.15)
@@ -2099,7 +2112,14 @@ function EclipseUI:CreateWindow(cfg)
                 end
                 if expandBtn then expandBtn.TextColor3 = t.textDim end
                 if settingsContainer then settingsContainer.BackgroundColor3 = t.bg end
-                if toggleIndicator then toggleIndicator.BackgroundColor3 = enabled and t.enabled or t.disabled end
+                -- Update toggle indicator with theme colors (theme-adaptive)
+                if toggleIndicator then
+                    toggleIndicator.BackgroundColor3 = enabled and t.accent or t.disabled
+                    local stroke = toggleIndicator:FindFirstChildOfClass("UIStroke")
+                    if stroke then
+                        stroke.Color = enabled and t.accentDark or t.stroke
+                    end
+                end
             end)
             
             local moduleObj = {
