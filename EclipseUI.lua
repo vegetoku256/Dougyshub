@@ -2462,6 +2462,14 @@ function EclipseUI:CreateWindow(cfg)
                 
                 if setting.tooltip then attachTooltip(row, setting.tooltip) end
                 
+                -- Theme subscriber for slider
+                subscribeTheme(function(t)
+                    label.TextColor3 = t.text
+                    valueLabel.TextColor3 = t.accent
+                    sliderBg.BackgroundColor3 = t.bg
+                    sliderFill.BackgroundColor3 = t.accent
+                end)
+                
                 return {
                     _row = row,
                     _sliderBg = sliderBg, -- For highlighting
