@@ -1873,9 +1873,11 @@ function EclipseUI:CreateWindow(cfg)
             -- Toggle indicator (small switch visual for toggles only)
             local toggleIndicator, toggleKnob
             if isToggle then
+                -- Use CurrentTheme for initial creation (not captured theme variable)
+                local currentTheme = CurrentTheme
                 toggleIndicator = create("Frame", {
                     Name = "ToggleIndicator",
-                    BackgroundColor3 = cfg.default and theme.accent or theme.disabled, -- Use theme.accent when enabled (theme-adaptive)
+                    BackgroundColor3 = cfg.default and currentTheme.accent or currentTheme.disabled, -- Use currentTheme.accent when enabled (theme-adaptive)
                     BorderSizePixel = 0,
                     Size = UDim2.fromOffset(28, 14),
                     Position = UDim2.new(0, 8, 0.5, -7),
@@ -1885,7 +1887,7 @@ function EclipseUI:CreateWindow(cfg)
                 
                 -- Add subtle stroke for better visibility and theme adaptation
                 local indicatorStroke = create("UIStroke", {
-                    Color = cfg.default and theme.accentDark or theme.stroke,
+                    Color = cfg.default and currentTheme.accentDark or currentTheme.stroke,
                     Thickness = 1,
                     Transparency = 0.3,
                     Parent = toggleIndicator
@@ -1914,14 +1916,15 @@ function EclipseUI:CreateWindow(cfg)
             
             -- Helper function to get initial text color based on theme colored text setting
             local function getInitialTextColor()
+                local currentTheme = CurrentTheme -- Use CurrentTheme, not captured theme
                 if not SavedSettings.themeColoredText then
-                    return theme.text -- Plain white when disabled
+                    return currentTheme.text -- Plain white when disabled
                 end
                 if isButton then
-                    return theme.accent -- Buttons always use accent
+                    return currentTheme.accent -- Buttons always use accent
                 end
                 -- Toggles use accent when enabled, text when disabled
-                return (cfg.default and theme.accent) or theme.text
+                return (cfg.default and currentTheme.accent) or currentTheme.text
             end
             
             local moduleName = create("TextLabel", {
@@ -1985,23 +1988,25 @@ function EclipseUI:CreateWindow(cfg)
             local enabled = cfg.default or false
             
             local function updateState()
+                -- Always use CurrentTheme (not the captured theme variable) so it updates when theme changes
+                local currentTheme = CurrentTheme
                 -- Update text color based on theme colored text setting
                 if SavedSettings.themeColoredText then
                     if isButton then
-                        moduleName.TextColor3 = theme.accent
+                        moduleName.TextColor3 = currentTheme.accent
                     else
-                        moduleName.TextColor3 = enabled and theme.accent or theme.text
+                        moduleName.TextColor3 = enabled and currentTheme.accent or currentTheme.text
                     end
                 else
-                    moduleName.TextColor3 = theme.text -- Plain white when setting is disabled
+                    moduleName.TextColor3 = currentTheme.text -- Plain white when setting is disabled
                 end
-                -- Animate toggle indicator if it exists (use theme.accent when enabled for theme-adaptation)
+                -- Animate toggle indicator if it exists (use currentTheme.accent when enabled for theme-adaptation)
                 if toggleIndicator then
-                    tween(toggleIndicator, { BackgroundColor3 = enabled and theme.accent or theme.disabled }, 0.15)
+                    tween(toggleIndicator, { BackgroundColor3 = enabled and currentTheme.accent or currentTheme.disabled }, 0.15)
                     -- Update stroke color too
                     local stroke = toggleIndicator:FindFirstChildOfClass("UIStroke")
                     if stroke then
-                        tween(stroke, { Color = enabled and theme.accentDark or theme.stroke }, 0.15)
+                        tween(stroke, { Color = enabled and currentTheme.accentDark or currentTheme.stroke }, 0.15)
                     end
                 end
                 if toggleKnob then
