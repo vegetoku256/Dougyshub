@@ -52,8 +52,26 @@ local SavedSettings = {
     debugMode = false,
     arrayListPosition = "Right",
     themeColoredText = true, -- Enable theme-colored text for toggles/buttons
+    toggleStates = {}, -- Store toggle states per game: { [placeId] = { [moduleName] = true/false } }
     -- Note: uiScale is NOT saved to prevent off-screen issues on reload
 }
+
+-- Helper function to get current game's PlaceId
+local function getCurrentPlaceId()
+    return tostring(game.PlaceId)
+end
+
+-- Helper function to get game-specific toggle states
+local function getGameToggleStates()
+    local placeId = getCurrentPlaceId()
+    if not SavedSettings.toggleStates then
+        SavedSettings.toggleStates = {}
+    end
+    if not SavedSettings.toggleStates[placeId] then
+        SavedSettings.toggleStates[placeId] = {}
+    end
+    return SavedSettings.toggleStates[placeId]
+end
 
 --=============================================================================
 -- GLOBAL STATE FOR ARRAYLIST (tracks all enabled toggles)
@@ -1985,7 +2003,13 @@ function EclipseUI:CreateWindow(cfg)
                 })
             end
             
+            -- Check for saved toggle state first, then fall back to default
+            local moduleName = cfg.name or "Module"
             local enabled = cfg.default or false
+            local gameToggleStates = getGameToggleStates()
+            if gameToggleStates[moduleName] ~= nil then
+                enabled = gameToggleStates[moduleName]
+            end
             
             local function updateState()
                 -- Always use CurrentTheme (not the captured theme variable) so it updates when theme changes
@@ -2053,11 +2077,30 @@ function EclipseUI:CreateWindow(cfg)
             end
             
             if cfg.type == "toggle" or cfg.type == nil then
+                -- Apply initial state if it was loaded from saved settings
+                local gameToggleStates = getGameToggleStates()
+                local wasLoadedFromSave = gameToggleStates[moduleName] ~= nil
+                if wasLoadedFromSave then
+                    -- State was loaded from saved settings, apply it visually
+                    updateState()
+                    setModuleActive(moduleName, enabled)
+                    -- Call callback with saved state (but don't notify) - delay slightly to ensure game is ready
+                    if cfg.callback then
+                        task.delay(0.5, function()
+                            task.spawn(cfg.callback, enabled)
+                        end)
+                    end
+                end
+                
                 moduleBtn.MouseButton1Click:Connect(function()
                     enabled = not enabled
                     updateState()
+                    -- Save toggle state (game-specific)
+                    local gameToggleStates = getGameToggleStates()
+                    gameToggleStates[moduleName] = enabled
+                    saveSettings()
                     -- Update ArrayList
-                    setModuleActive(cfg.name or "Module", enabled)
+                    setModuleActive(moduleName, enabled)
                     if cfg.callback then
                         task.spawn(cfg.callback, enabled)
                     end
