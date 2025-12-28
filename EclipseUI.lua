@@ -1932,6 +1932,14 @@ function EclipseUI:CreateWindow(cfg)
                 makeRounded(btnIndicator, 1)
             end
             
+            -- Check for saved toggle state first, then fall back to default (BEFORE creating UI elements)
+            local moduleNameStr = cfg.name or "Module" -- String name for saving/loading
+            local enabled = cfg.default or false
+            local gameToggleStates = getGameToggleStates()
+            if gameToggleStates[moduleNameStr] ~= nil then
+                enabled = gameToggleStates[moduleNameStr]
+            end
+            
             -- Helper function to get initial text color based on theme colored text setting
             local function getInitialTextColor()
                 local currentTheme = CurrentTheme -- Use CurrentTheme, not captured theme
@@ -1942,10 +1950,10 @@ function EclipseUI:CreateWindow(cfg)
                     return currentTheme.accent -- Buttons always use accent
                 end
                 -- Toggles use accent when enabled, text when disabled
-                return (cfg.default and currentTheme.accent) or currentTheme.text
+                return (enabled and currentTheme.accent) or currentTheme.text
             end
             
-            local moduleName = create("TextLabel", {
+            local moduleNameLabel = create("TextLabel", {
                 BackgroundTransparency = 1,
                 Size = UDim2.new(1, isToggle and -45 or (isButton and -20 or -10), 1, 0),
                 Position = UDim2.fromOffset(isToggle and 42 or (isButton and 12 or 10), 0),
@@ -1956,6 +1964,7 @@ function EclipseUI:CreateWindow(cfg)
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = moduleBtn
             })
+            local moduleName = moduleNameLabel -- Keep moduleName for backward compatibility
             
             local expandBtn
             local expanded = false
@@ -2003,26 +2012,20 @@ function EclipseUI:CreateWindow(cfg)
                 })
             end
             
-            -- Check for saved toggle state first, then fall back to default
-            local moduleName = cfg.name or "Module"
-            local enabled = cfg.default or false
-            local gameToggleStates = getGameToggleStates()
-            if gameToggleStates[moduleName] ~= nil then
-                enabled = gameToggleStates[moduleName]
-            end
-            
             local function updateState()
                 -- Always use CurrentTheme (not the captured theme variable) so it updates when theme changes
                 local currentTheme = CurrentTheme
-                -- Update text color based on theme colored text setting
-                if SavedSettings.themeColoredText then
-                    if isButton then
-                        moduleName.TextColor3 = currentTheme.accent
+                -- Update text color based on theme colored text setting (use moduleNameLabel to avoid conflicts)
+                if moduleNameLabel and moduleNameLabel.Parent then
+                    if SavedSettings.themeColoredText then
+                        if isButton then
+                            moduleNameLabel.TextColor3 = currentTheme.accent
+                        else
+                            moduleNameLabel.TextColor3 = enabled and currentTheme.accent or currentTheme.text
+                        end
                     else
-                        moduleName.TextColor3 = enabled and currentTheme.accent or currentTheme.text
+                        moduleNameLabel.TextColor3 = currentTheme.text -- Plain white when setting is disabled
                     end
-                else
-                    moduleName.TextColor3 = currentTheme.text -- Plain white when setting is disabled
                 end
                 -- Animate toggle indicator if it exists (use currentTheme.accent when enabled for theme-adaptation)
                 if toggleIndicator then
@@ -2079,11 +2082,11 @@ function EclipseUI:CreateWindow(cfg)
             if cfg.type == "toggle" or cfg.type == nil then
                 -- Apply initial state if it was loaded from saved settings
                 local gameToggleStates = getGameToggleStates()
-                local wasLoadedFromSave = gameToggleStates[moduleName] ~= nil
+                local wasLoadedFromSave = gameToggleStates[moduleNameStr] ~= nil
                 if wasLoadedFromSave then
                     -- State was loaded from saved settings, apply it visually
                     updateState()
-                    setModuleActive(moduleName, enabled)
+                    setModuleActive(moduleNameStr, enabled)
                     -- Call callback with saved state (but don't notify) - delay slightly to ensure game is ready
                     if cfg.callback then
                         task.delay(0.5, function()
@@ -2097,10 +2100,10 @@ function EclipseUI:CreateWindow(cfg)
                     updateState()
                     -- Save toggle state (game-specific)
                     local gameToggleStates = getGameToggleStates()
-                    gameToggleStates[moduleName] = enabled
+                    gameToggleStates[moduleNameStr] = enabled
                     saveSettings()
                     -- Update ArrayList
-                    setModuleActive(moduleName, enabled)
+                    setModuleActive(moduleNameStr, enabled)
                     if cfg.callback then
                         task.spawn(cfg.callback, enabled)
                     end
