@@ -2016,7 +2016,8 @@ function EclipseUI:CreateWindow(cfg)
                 -- Always use CurrentTheme (not the captured theme variable) so it updates when theme changes
                 local currentTheme = CurrentTheme
                 -- Update text color based on theme colored text setting (use moduleNameLabel to avoid conflicts)
-                if moduleNameLabel and moduleNameLabel.Parent then
+                -- Defensive check: ensure moduleNameLabel is a TextLabel instance
+                if moduleNameLabel and typeof(moduleNameLabel) == "Instance" and moduleNameLabel:IsA("TextLabel") and moduleNameLabel.Parent then
                     if SavedSettings.themeColoredText then
                         if isButton then
                             moduleNameLabel.TextColor3 = currentTheme.accent
@@ -2177,14 +2178,16 @@ function EclipseUI:CreateWindow(cfg)
             subscribeTheme(function(t)
                 updateHoverColors(moduleRow, t.panel, t.hover)
                 -- Update text color based on theme colored text setting
-                if SavedSettings.themeColoredText then
-                    if isButton then
-                        moduleName.TextColor3 = t.accent
+                if moduleNameLabel and moduleNameLabel.Parent then
+                    if SavedSettings.themeColoredText then
+                        if isButton then
+                            moduleNameLabel.TextColor3 = t.accent
+                        else
+                            moduleNameLabel.TextColor3 = enabled and t.accent or t.text
+                        end
                     else
-                        moduleName.TextColor3 = enabled and t.accent or t.text
+                        moduleNameLabel.TextColor3 = t.text -- Plain white when setting is disabled
                     end
-                else
-                    moduleName.TextColor3 = t.text -- Plain white when setting is disabled
                 end
                 local btnIndicator = moduleRow:FindFirstChild("ButtonIndicator")
                 if btnIndicator then btnIndicator.BackgroundColor3 = t.accent end
@@ -2207,7 +2210,7 @@ function EclipseUI:CreateWindow(cfg)
                 _controls = {},
                 _callback = cfg.callback, -- Store callback for destroy functionality
                 _isToggle = isToggle, -- Store if this is a toggle
-                _moduleName = moduleName, -- Store reference to update text color when setting changes
+                _moduleName = moduleNameLabel, -- Store reference to update text color when setting changes
                 _isButton = isButton, -- Store if this is a button
             }
             
