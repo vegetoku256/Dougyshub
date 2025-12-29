@@ -1487,50 +1487,116 @@ function EclipseUI:CreateWindow(cfg)
             return
         end
         
+        -- Main container with shadow effect
         changelogFrame = create("Frame", {
             Name = "ChangelogViewer",
             BackgroundColor3 = theme.bg,
             BorderSizePixel = 0,
-            Size = UDim2.fromOffset(700, 600),
+            Size = UDim2.fromOffset(750, 650),
             AnchorPoint = Vector2.new(0.5, 0.5),
             Position = UDim2.fromScale(0.5, 0.5),
             ZIndex = 800,
             Parent = gui
         })
-        makeRounded(changelogFrame, 10)
+        makeRounded(changelogFrame, 12)
         makeStroke(changelogFrame, theme.accent, 2)
         
+        -- Add subtle inner shadow effect
+        local innerShadow = create("Frame", {
+            BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+            BackgroundTransparency = 0.7,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 1, 0),
+            ZIndex = 799,
+            Parent = changelogFrame
+        })
+        makeRounded(innerShadow, 12)
+        
+        -- Modern header with gradient-like effect
         local changelogHeader = create("Frame", {
             BackgroundColor3 = theme.panelHeader,
             BorderSizePixel = 0,
-            Size = UDim2.new(1, 0, 0, 40),
+            Size = UDim2.new(1, 0, 0, 50),
+            ZIndex = 801,
             Parent = changelogFrame
         })
-        makeRounded(changelogHeader, 10)
+        makeRounded(changelogHeader, 12)
+        
+        -- Accent line at top of header
+        local accentLine = create("Frame", {
+            BackgroundColor3 = theme.accent,
+            BorderSizePixel = 0,
+            Size = UDim2.new(1, 0, 0, 3),
+            ZIndex = 802,
+            Parent = changelogHeader
+        })
+        makeRounded(accentLine, 12)
+        
+        -- Title with icon-like styling
+        local titleContainer = create("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -100, 1, 0),
+            Position = UDim2.fromOffset(20, 0),
+            ZIndex = 802,
+            Parent = changelogHeader
+        })
         
         create("TextLabel", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, -80, 1, 0),
-            Position = UDim2.fromOffset(15, 0),
-            Text = "Changelog (drag header to move)",
+            Size = UDim2.new(0, 0, 1, 0),
+            Position = UDim2.fromOffset(0, 0),
+            AutomaticSize = Enum.AutomaticSize.X,
+            Text = "📋 Changelog",
             TextColor3 = theme.accent,
             Font = Enum.Font.GothamBold,
-            TextSize = 16,
+            TextSize = 20,
             TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = titleContainer
+        })
+        
+        create("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 0, 1, 0),
+            Position = UDim2.fromOffset(0, 0),
+            AutomaticSize = Enum.AutomaticSize.X,
+            Text = " (drag to move)",
+            TextColor3 = theme.textDim,
+            Font = Enum.Font.Gotham,
+            TextSize = 12,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = titleContainer
+        })
+        
+        -- Modern close button
+        local closeBtnBg = create("Frame", {
+            BackgroundColor3 = Color3.fromRGB(255, 60, 60),
+            BorderSizePixel = 0,
+            Size = UDim2.fromOffset(32, 32),
+            Position = UDim2.new(1, -40, 0.5, -16),
+            ZIndex = 802,
             Parent = changelogHeader
         })
+        makeRounded(closeBtnBg, 6)
         
         local closeBtn = create("TextButton", {
             BackgroundTransparency = 1,
-            Size = UDim2.fromOffset(30, 30),
-            Position = UDim2.new(1, -35, 0.5, -15),
-            Text = "X",
-            TextColor3 = theme.text,
+            Size = UDim2.new(1, 0, 1, 0),
+            Text = "✕",
+            TextColor3 = Color3.fromRGB(255, 255, 255),
             Font = Enum.Font.GothamBold,
-            TextSize = 16,
-            ZIndex = 801,
-            Parent = changelogHeader
+            TextSize = 18,
+            ZIndex = 803,
+            Parent = closeBtnBg
         })
+        
+        -- Hover effect for close button
+        closeBtn.MouseEnter:Connect(function()
+            TweenService:Create(closeBtnBg, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255, 80, 80)}):Play()
+        end)
+        closeBtn.MouseLeave:Connect(function()
+            TweenService:Create(closeBtnBg, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(255, 60, 60)}):Play()
+        end)
+        
         closeBtn.MouseButton1Click:Connect(function()
             changelogFrame.Visible = false
         end)
@@ -1542,8 +1608,8 @@ function EclipseUI:CreateWindow(cfg)
                 clDragging = true
                 clDragStart = input.Position
                 clStartPos = changelogFrame.Position
-                    input.Changed:Connect(function()
-                        if input.UserInputState == Enum.UserInputState.End then
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
                         clDragging = false
                     end
                 end)
@@ -1561,20 +1627,20 @@ function EclipseUI:CreateWindow(cfg)
         end)
         table.insert(window._connections, clDragConn)
         
-        -- RESIZE handle (bottom-right corner)
+        -- RESIZE handle (bottom-right corner) - more visible
         local resizeHandle = create("TextButton", {
             BackgroundColor3 = theme.accent,
             BorderSizePixel = 0,
-            Size = UDim2.fromOffset(20, 20),
-            Position = UDim2.new(1, -20, 1, -20),
-            Text = "//",
-            TextColor3 = theme.text,
+            Size = UDim2.fromOffset(24, 24),
+            Position = UDim2.new(1, -24, 1, -24),
+            Text = "⟲",
+            TextColor3 = Color3.fromRGB(255, 255, 255),
             Font = Enum.Font.GothamBold,
-            TextSize = 10,
+            TextSize = 14,
             ZIndex = 801,
             Parent = changelogFrame
         })
-        makeRounded(resizeHandle, 4)
+        makeRounded(resizeHandle, 6)
         
         local resizing, resizeStart, startSize = false, Vector2.new(), changelogFrame.Size
         resizeHandle.InputBegan:Connect(function(input)
@@ -1594,55 +1660,132 @@ function EclipseUI:CreateWindow(cfg)
             if not resizing then return end
             if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
             local delta = input.Position - resizeStart
-            local newW = math.clamp(startSize.X.Offset + delta.X, 300, 800)
-            local newH = math.clamp(startSize.Y.Offset + delta.Y, 200, 600)
+            local newW = math.clamp(startSize.X.Offset + delta.X, 400, 1000)
+            local newH = math.clamp(startSize.Y.Offset + delta.Y, 300, 800)
             changelogFrame.Size = UDim2.fromOffset(newW, newH)
         end)
         table.insert(window._connections, resizeConn)
         
+        -- Scrollable content area with better padding
         local changelogScroll = create("ScrollingFrame", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, -20, 1, -65),
-            Position = UDim2.fromOffset(10, 45),
-            ScrollBarThickness = 6,
+            Size = UDim2.new(1, -30, 1, -70),
+            Position = UDim2.fromOffset(15, 60),
+            ScrollBarThickness = 8,
             ScrollBarImageColor3 = theme.accent,
+            BorderSizePixel = 0,
             CanvasSize = UDim2.new(0, 0, 0, 0),
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            ZIndex = 801,
             Parent = changelogFrame
         })
         
         create("UIListLayout", {
             Parent = changelogScroll,
             SortOrder = Enum.SortOrder.LayoutOrder,
-            Padding = UDim.new(0, 15)
+            Padding = UDim.new(0, 20)
         })
         
-        -- Build changelog content (NEWEST FIRST - use positive index for older entries)
+        -- Build changelog content with modern card design
         local totalEntries = #changelogEntries
         for i, entry in ipairs(changelogEntries) do
-            local entryFrame = create("Frame", {
+            -- Card container with background
+            local cardBg = create("Frame", {
+                BackgroundColor3 = theme.panelHeader,
+                BorderSizePixel = 0,
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+                LayoutOrder = i,
+                ZIndex = 1,
+                Parent = changelogScroll
+            })
+            makeRounded(cardBg, 8)
+            makeStroke(cardBg, Color3.new(theme.accent.R * 0.3, theme.accent.G * 0.3, theme.accent.B * 0.3), 1)
+            
+            -- Padding inside card
+            local cardPadding = create("UIPadding", {
+                PaddingTop = UDim.new(0, 18),
+                PaddingBottom = UDim.new(0, 18),
+                PaddingLeft = UDim.new(0, 20),
+                PaddingRight = UDim.new(0, 20),
+                Parent = cardBg
+            })
+            
+            -- Version header with date
+            local headerContainer = create("Frame", {
                 BackgroundTransparency = 1,
                 Size = UDim2.new(1, 0, 0, 0),
                 AutomaticSize = Enum.AutomaticSize.Y,
-                LayoutOrder = i, -- First added = first shown (add newest first in script!)
-                Parent = changelogScroll
+                ZIndex = 2,
+                Parent = cardBg
+            })
+            
+            -- Version badge
+            local versionBadge = create("Frame", {
+                BackgroundColor3 = theme.accent,
+                BorderSizePixel = 0,
+                Size = UDim2.new(0, 0, 0, 28),
+                AutomaticSize = Enum.AutomaticSize.X,
+                ZIndex = 3,
+                Parent = headerContainer
+            })
+            makeRounded(versionBadge, 6)
+            
+            create("UIPadding", {
+                PaddingLeft = UDim.new(0, 12),
+                PaddingRight = UDim.new(0, 12),
+                PaddingTop = UDim.new(0, 4),
+                PaddingBottom = UDim.new(0, 4),
+                Parent = versionBadge
             })
             
             create("TextLabel", {
                 BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 0, 30),
-                Text = "v" .. entry.version .. " - " .. entry.timestamp,
-                TextColor3 = theme.accent,
+                Size = UDim2.new(0, 0, 1, 0),
+                AutomaticSize = Enum.AutomaticSize.X,
+                Text = "v" .. entry.version,
+                TextColor3 = Color3.fromRGB(255, 255, 255),
                 Font = Enum.Font.GothamBold,
-                TextSize = 18,
+                TextSize = 16,
                 TextXAlignment = Enum.TextXAlignment.Left,
-                Parent = entryFrame
+                ZIndex = 4,
+                Parent = versionBadge
             })
             
+            -- Date label
+            local dateLabel = create("TextLabel", {
+                BackgroundTransparency = 1,
+                Size = UDim2.new(0, 0, 0, 28),
+                Position = UDim2.new(0, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.X,
+                Text = entry.timestamp,
+                TextColor3 = theme.textDim,
+                Font = Enum.Font.Gotham,
+                TextSize = 13,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                ZIndex = 2,
+                Parent = headerContainer
+            })
+            
+            -- Position date to the right
+            dateLabel.Position = UDim2.new(1, -10, 0, 0)
+            dateLabel.AnchorPoint = Vector2.new(1, 0)
+            
+            -- Divider line
+            local divider = create("Frame", {
+                BackgroundColor3 = Color3.new(theme.accent.R * 0.2, theme.accent.G * 0.2, theme.accent.B * 0.2),
+                BorderSizePixel = 0,
+                Size = UDim2.new(1, 0, 0, 1),
+                Position = UDim2.fromOffset(0, 36),
+                ZIndex = 2,
+                Parent = cardBg
+            })
+            
+            -- Changes content with better spacing
             local changesText = create("TextLabel", {
                 BackgroundTransparency = 1,
                 Size = UDim2.new(1, 0, 0, 0),
-                Position = UDim2.fromOffset(0, 32),
+                Position = UDim2.fromOffset(0, 48),
                 AutomaticSize = Enum.AutomaticSize.Y,
                 Text = entry.changes,
                 TextColor3 = theme.text,
@@ -1651,18 +1794,21 @@ function EclipseUI:CreateWindow(cfg)
                 TextWrapped = true,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 RichText = true,
-                Parent = entryFrame
+                LineHeight = 1.4,
+                ZIndex = 2,
+                Parent = cardBg
             })
         end
         
         if #changelogEntries == 0 then
-            create("TextLabel", {
+            local emptyLabel = create("TextLabel", {
                 BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 0, 40),
+                Size = UDim2.new(1, 0, 0, 100),
                 Text = "No changelog entries yet",
                 TextColor3 = theme.textDim,
                 Font = Enum.Font.Gotham,
-                TextSize = 14,
+                TextSize = 16,
+                ZIndex = 2,
                 Parent = changelogScroll
             })
         end
