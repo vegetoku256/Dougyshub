@@ -1559,7 +1559,7 @@ function EclipseUI:CreateWindow(cfg)
             Size = UDim2.new(0, 0, 1, 0),
             Position = UDim2.fromOffset(0, 0),
             AutomaticSize = Enum.AutomaticSize.X,
-            Text = " (drag to move)",
+            Text = "",
             TextColor3 = theme.textDim,
             Font = Enum.Font.Gotham,
             TextSize = 12,
@@ -1581,7 +1581,7 @@ function EclipseUI:CreateWindow(cfg)
         local closeBtn = create("TextButton", {
             BackgroundTransparency = 1,
             Size = UDim2.new(1, 0, 1, 0),
-            Text = "✕",
+            Text = "X",
             TextColor3 = Color3.fromRGB(255, 255, 255),
             Font = Enum.Font.GothamBold,
             TextSize = 18,
