@@ -297,7 +297,8 @@ local function makeRounded(obj, r)
 end
 
 local function makeStroke(obj, color, thickness)
-    create("UIStroke", { Parent = obj, Color = color or CurrentTheme.stroke, Thickness = thickness or 1, Transparency = 0.3 })
+    local stroke = create("UIStroke", { Parent = obj, Color = color or CurrentTheme.stroke, Thickness = thickness or 1, Transparency = 0.3 })
+    return stroke
 end
 
 local function keycodeToString(kc)
@@ -1487,6 +1488,19 @@ function EclipseUI:CreateWindow(cfg)
             return
         end
         
+        -- Store references for theme updates
+        local changelogElements = {
+            frame = nil,
+            header = nil,
+            titleLabel = nil,
+            stroke = nil,
+            scrollBar = nil,
+            resizeHandle = nil,
+            cards = {},
+            badges = {},
+            strokes = {}
+        }
+        
         -- Main container with shadow effect
         changelogFrame = create("Frame", {
             Name = "ChangelogViewer",
@@ -1498,8 +1512,10 @@ function EclipseUI:CreateWindow(cfg)
             ZIndex = 800,
             Parent = gui
         })
+        changelogElements.frame = changelogFrame
         makeRounded(changelogFrame, 12)
-        makeStroke(changelogFrame, theme.accent, 2)
+        local frameStroke = makeStroke(changelogFrame, theme.accent, 2)
+        changelogElements.stroke = frameStroke
         
         -- Add subtle inner shadow effect
         local innerShadow = create("Frame", {
@@ -1520,17 +1536,8 @@ function EclipseUI:CreateWindow(cfg)
             ZIndex = 801,
             Parent = changelogFrame
         })
+        changelogElements.header = changelogHeader
         makeRounded(changelogHeader, 12)
-        
-        -- Accent line at top of header
-        local accentLine = create("Frame", {
-            BackgroundColor3 = theme.accent,
-            BorderSizePixel = 0,
-            Size = UDim2.new(1, 0, 0, 3),
-            ZIndex = 802,
-            Parent = changelogHeader
-        })
-        makeRounded(accentLine, 12)
         
         -- Title with icon-like styling
         local titleContainer = create("Frame", {
@@ -1541,7 +1548,7 @@ function EclipseUI:CreateWindow(cfg)
             Parent = changelogHeader
         })
         
-        create("TextLabel", {
+        local titleLabel = create("TextLabel", {
             BackgroundTransparency = 1,
             Size = UDim2.new(0, 0, 1, 0),
             Position = UDim2.fromOffset(0, 0),
@@ -1553,6 +1560,7 @@ function EclipseUI:CreateWindow(cfg)
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = titleContainer
         })
+        changelogElements.titleLabel = titleLabel
         
         create("TextLabel", {
             BackgroundTransparency = 1,
@@ -1633,13 +1641,14 @@ function EclipseUI:CreateWindow(cfg)
             BorderSizePixel = 0,
             Size = UDim2.fromOffset(24, 24),
             Position = UDim2.new(1, -24, 1, -24),
-            Text = "⟲",
+            Text = "◢",
             TextColor3 = Color3.fromRGB(255, 255, 255),
             Font = Enum.Font.GothamBold,
-            TextSize = 14,
+            TextSize = 16,
             ZIndex = 801,
             Parent = changelogFrame
         })
+        changelogElements.resizeHandle = resizeHandle
         makeRounded(resizeHandle, 6)
         
         local resizing, resizeStart, startSize = false, Vector2.new(), changelogFrame.Size
@@ -1679,6 +1688,7 @@ function EclipseUI:CreateWindow(cfg)
             ZIndex = 801,
             Parent = changelogFrame
         })
+        changelogElements.scrollBar = changelogScroll
         
         create("UIListLayout", {
             Parent = changelogScroll,
@@ -1699,8 +1709,10 @@ function EclipseUI:CreateWindow(cfg)
                 ZIndex = 1,
                 Parent = changelogScroll
             })
+            table.insert(changelogElements.cards, cardBg)
             makeRounded(cardBg, 8)
-            makeStroke(cardBg, Color3.new(theme.accent.R * 0.3, theme.accent.G * 0.3, theme.accent.B * 0.3), 1)
+            local cardStroke = makeStroke(cardBg, Color3.new(theme.accent.R * 0.3, theme.accent.G * 0.3, theme.accent.B * 0.3), 1)
+            table.insert(changelogElements.strokes, cardStroke)
             
             -- Padding inside card
             local cardPadding = create("UIPadding", {
@@ -1729,6 +1741,7 @@ function EclipseUI:CreateWindow(cfg)
                 ZIndex = 3,
                 Parent = headerContainer
             })
+            table.insert(changelogElements.badges, versionBadge)
             makeRounded(versionBadge, 6)
             
             create("UIPadding", {
@@ -1812,6 +1825,44 @@ function EclipseUI:CreateWindow(cfg)
                 Parent = changelogScroll
             })
         end
+        
+        -- Subscribe to theme changes to update colors
+        local themeUpdateConnection = subscribeTheme(function(newTheme)
+            if changelogElements.frame then
+                changelogElements.frame.BackgroundColor3 = newTheme.bg
+            end
+            if changelogElements.stroke then
+                changelogElements.stroke.Color = newTheme.accent
+            end
+            if changelogElements.header then
+                changelogElements.header.BackgroundColor3 = newTheme.panelHeader
+            end
+            if changelogElements.titleLabel then
+                changelogElements.titleLabel.TextColor3 = newTheme.accent
+            end
+            if changelogElements.scrollBar then
+                changelogElements.scrollBar.ScrollBarImageColor3 = newTheme.accent
+            end
+            if changelogElements.resizeHandle then
+                changelogElements.resizeHandle.BackgroundColor3 = newTheme.accent
+            end
+            for _, card in ipairs(changelogElements.cards) do
+                if card and card.Parent then
+                    card.BackgroundColor3 = newTheme.panelHeader
+                end
+            end
+            for _, badge in ipairs(changelogElements.badges) do
+                if badge and badge.Parent then
+                    badge.BackgroundColor3 = newTheme.accent
+                end
+            end
+            for _, stroke in ipairs(changelogElements.strokes) do
+                if stroke and stroke.Parent then
+                    stroke.Color = Color3.new(newTheme.accent.R * 0.3, newTheme.accent.G * 0.3, newTheme.accent.B * 0.3)
+                end
+            end
+        end)
+        table.insert(window._connections, themeUpdateConnection)
     end
     
     function window:HideChangelog()
