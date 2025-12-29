@@ -1254,6 +1254,11 @@ function EclipseUI:CreateWindow(cfg)
     end
     
     function window:Notify(text, duration, options)
+        -- Skip notifications during initial load (first 3 seconds)
+        if isInitialLoad then
+            return
+        end
+        
         options = options or {}
         duration = duration or options.duration or Config.notifyDuration
         
@@ -2332,23 +2337,10 @@ function EclipseUI:CreateWindow(cfg)
                     -- State was loaded from saved settings, apply it visually
                     updateState()
                     setModuleActive(moduleNameStr, enabled)
-                    -- Call callback with saved state (but suppress notifications during initial load)
+                    -- Call callback with saved state (notifications are suppressed during initial load by Notify function)
                     if cfg.callback then
                         task.delay(0.5, function()
-                            -- Store original notify function if it exists
-                            local originalNotify = window.Notify
-                            if isInitialLoad and originalNotify then
-                                -- Temporarily disable notifications
-                                window.Notify = function() end
-                            end
-                            task.spawn(function()
-                                cfg.callback(enabled)
-                                -- Restore notify function after callback
-                                if isInitialLoad and originalNotify then
-                                    task.wait(0.1)
-                                    window.Notify = originalNotify
-                                end
-                            end)
+                            task.spawn(cfg.callback, enabled)
                         end)
                     end
                 end
@@ -3070,16 +3062,10 @@ function EclipseUI:CreateWindow(cfg)
                 })
                 makeRounded(dropBtn, 4)
                 
-                -- Call callback with saved value if it was loaded (suppress notifications during initial load)
+                -- Call callback with saved value if it was loaded (notifications are suppressed during initial load by Notify function)
                 local wasLoadedFromSave = gameDropdownStates[dropdownNameStr] ~= nil
                 if wasLoadedFromSave and setting.callback then
                     task.delay(0.5, function()
-                        -- Store original notify function if it exists
-                        local originalNotify = window.Notify
-                        if isInitialLoad and originalNotify then
-                            -- Temporarily disable notifications
-                            window.Notify = function() end
-                        end
                         task.spawn(function()
                             if isMultiple then
                                 local result = {}
@@ -3089,11 +3075,6 @@ function EclipseUI:CreateWindow(cfg)
                                 setting.callback(result)
                             else
                                 setting.callback(selectedValues)
-                            end
-                            -- Restore notify function after callback
-                            if isInitialLoad and originalNotify then
-                                task.wait(0.1)
-                                window.Notify = originalNotify
                             end
                         end)
                     end)
