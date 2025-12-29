@@ -1470,13 +1470,15 @@ function EclipseUI:CreateWindow(cfg)
     --=========================================================================
     -- CHANGELOG METHODS
     --=========================================================================
-    function window:AddChangelog(version, changes)
+    function window:AddChangelog(version, changes, date)
+        -- date is optional - if not provided, use today's date for backwards compatibility
+        local timestamp = date or os.date("%Y-%m-%d")
         table.insert(changelogEntries, {
             version = version,
             changes = changes,
-            timestamp = os.date("%Y-%m-%d")
+            timestamp = timestamp
         })
-        debugLog("Changelog entry added: " .. version)
+        debugLog("Changelog entry added: " .. version .. " (" .. timestamp .. ")")
     end
     
     function window:ShowChangelog()
@@ -1489,7 +1491,7 @@ function EclipseUI:CreateWindow(cfg)
             Name = "ChangelogViewer",
             BackgroundColor3 = theme.bg,
             BorderSizePixel = 0,
-            Size = UDim2.fromOffset(450, 400),
+            Size = UDim2.fromOffset(700, 600),
             AnchorPoint = Vector2.new(0.5, 0.5),
             Position = UDim2.fromScale(0.5, 0.5),
             ZIndex = 800,
@@ -1628,11 +1630,11 @@ function EclipseUI:CreateWindow(cfg)
             
             create("TextLabel", {
                 BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 0, 24),
+                Size = UDim2.new(1, 0, 0, 30),
                 Text = "v" .. entry.version .. " - " .. entry.timestamp,
                 TextColor3 = theme.accent,
                 Font = Enum.Font.GothamBold,
-                TextSize = 14,
+                TextSize = 18,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 Parent = entryFrame
             })
@@ -1640,12 +1642,12 @@ function EclipseUI:CreateWindow(cfg)
             local changesText = create("TextLabel", {
                 BackgroundTransparency = 1,
                 Size = UDim2.new(1, 0, 0, 0),
-                Position = UDim2.fromOffset(0, 26),
+                Position = UDim2.fromOffset(0, 32),
                 AutomaticSize = Enum.AutomaticSize.Y,
                 Text = entry.changes,
                 TextColor3 = theme.text,
                 Font = Enum.Font.Gotham,
-                TextSize = 13,
+                TextSize = 15,
                 TextWrapped = true,
                 TextXAlignment = Enum.TextXAlignment.Left,
                 RichText = true,
