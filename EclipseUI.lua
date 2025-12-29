@@ -418,6 +418,15 @@ local function updateHoverColors(element, baseColor, hoverColor)
 end
 
 --=============================================================================
+-- INITIAL LOAD FLAG (suppress notifications on startup)
+--=============================================================================
+local isInitialLoad = true
+task.spawn(function()
+    task.wait(3) -- Allow 3 seconds for initial load
+    isInitialLoad = false
+end)
+
+--=============================================================================
 -- MAIN WINDOW CREATION
 --=============================================================================
 function EclipseUI:CreateWindow(cfg)
@@ -2323,10 +2332,23 @@ function EclipseUI:CreateWindow(cfg)
                     -- State was loaded from saved settings, apply it visually
                     updateState()
                     setModuleActive(moduleNameStr, enabled)
-                    -- Call callback with saved state (but don't notify) - delay slightly to ensure game is ready
+                    -- Call callback with saved state (but suppress notifications during initial load)
                     if cfg.callback then
                         task.delay(0.5, function()
-                            task.spawn(cfg.callback, enabled)
+                            -- Store original notify function if it exists
+                            local originalNotify = window.Notify
+                            if isInitialLoad and originalNotify then
+                                -- Temporarily disable notifications
+                                window.Notify = function() end
+                            end
+                            task.spawn(function()
+                                cfg.callback(enabled)
+                                -- Restore notify function after callback
+                                if isInitialLoad and originalNotify then
+                                    task.wait(0.1)
+                                    window.Notify = originalNotify
+                                end
+                            end)
                         end)
                     end
                 end
@@ -2709,15 +2731,20 @@ function EclipseUI:CreateWindow(cfg)
                 local rounding = setting.rounding or 0
                 local suffix = setting.suffix or ""
                 
-                local function updateSlider(v)
+                local function updateSlider(v, skipCallback)
                     value = math.clamp(v, min, max)
                     value = math.floor(value / step + 0.5) * step
                     local pct = (value - min) / math.max(0.0001, max - min)
                     sliderFill.Size = UDim2.new(pct, 0, 1, 0)
                     local display = rounding > 0 and (math.floor(value * 10^rounding + 0.5) / 10^rounding) or value
                     valueLabel.Text = tostring(display) .. suffix
+                    -- Call callback unless we're skipping it (for initial setup)
+                    if not skipCallback and setting.callback then
+                        task.spawn(setting.callback, value)
+                    end
                 end
-                updateSlider(value)
+                -- Initialize slider with default value and call callback
+                updateSlider(value, false) -- Call callback on initial setup
                 
                 local dragging = false
                 
@@ -2762,7 +2789,7 @@ function EclipseUI:CreateWindow(cfg)
                 return {
                     _row = row,
                     _sliderBg = sliderBg, -- For highlighting
-                    Set = function(_, v) updateSlider(v); if setting.callback then task.spawn(setting.callback, value) end end,
+                    Set = function(_, v) updateSlider(v, false) end, -- Call callback when Set is called
                     Get = function() return value end
                 }
                 
@@ -3043,35 +3070,32 @@ function EclipseUI:CreateWindow(cfg)
                 })
                 makeRounded(dropBtn, 4)
                 
-                -- Call callback with saved value if it was loaded (delay slightly to ensure game is ready)
+                -- Call callback with saved value if it was loaded (suppress notifications during initial load)
                 local wasLoadedFromSave = gameDropdownStates[dropdownNameStr] ~= nil
                 if wasLoadedFromSave and setting.callback then
                     task.delay(0.5, function()
-                        if isMultiple then
-                            local result = {}
-                            for k, _ in pairs(selectedValues) do
-                                table.insert(result, k)
-                            end
-                            task.spawn(setting.callback, result)
-                        else
-                            task.spawn(setting.callback, selectedValues)
+                        -- Store original notify function if it exists
+                        local originalNotify = window.Notify
+                        if isInitialLoad and originalNotify then
+                            -- Temporarily disable notifications
+                            window.Notify = function() end
                         end
-                    end)
-                end
-                
-                -- Call callback with saved value if it was loaded (delay slightly to ensure game is ready)
-                local wasLoadedFromSave = gameDropdownStates[dropdownNameStr] ~= nil
-                if wasLoadedFromSave and setting.callback then
-                    task.delay(0.5, function()
-                        if isMultiple then
-                            local result = {}
-                            for k, _ in pairs(selectedValues) do
-                                table.insert(result, k)
+                        task.spawn(function()
+                            if isMultiple then
+                                local result = {}
+                                for k, _ in pairs(selectedValues) do
+                                    table.insert(result, k)
+                                end
+                                setting.callback(result)
+                            else
+                                setting.callback(selectedValues)
                             end
-                            task.spawn(setting.callback, result)
-                        else
-                            task.spawn(setting.callback, selectedValues)
-                        end
+                            -- Restore notify function after callback
+                            if isInitialLoad and originalNotify then
+                                task.wait(0.1)
+                                window.Notify = originalNotify
+                            end
+                        end)
                     end)
                 end
                 
