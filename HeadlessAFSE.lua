@@ -134,9 +134,21 @@ end
 
 -- Write status to file (Overlay reads this)
 local function writeStatus(statusData)
-    pcall(function()
-        writefile(getFullPath(STATUS_FILE), safeEncode(statusData))
+    local success, err = pcall(function()
+        local filePath = getFullPath(STATUS_FILE)
+        writefile(filePath, safeEncode(statusData))
+        -- Debug: Check if file was created
+        if isfile and isfile(filePath) then
+            -- File exists - good!
+        else
+            warn("[Headless] WARNING: File might not exist after write: " .. filePath)
+        end
     end)
+    if not success then
+        warn("[Headless] Failed to write status: " .. tostring(err))
+        warn("[Headless] Path: " .. getFullPath(STATUS_FILE))
+        warn("[Headless] Your executor might not support absolute paths with writefile!")
+    end
 end
 
 -- Read settings from file (Overlay writes this)
@@ -325,6 +337,31 @@ end
 
 print("[Headless] Starting Dougy's Hub Headless Script...")
 print("[Headless] Shared folder: " .. SHARED_PATH)
+
+-- Test if writefile works with absolute paths
+local testFilePath = getFullPath("_test_write.txt")
+local testSuccess, testErr = pcall(function()
+    writefile(testFilePath, "test")
+    if isfile and isfile(testFilePath) then
+        local content = readfile(testFilePath)
+        if content == "test" then
+            print("[Headless] ✓ File operations working! Testing with: " .. testFilePath)
+            if delfile then
+                pcall(function() delfile(testFilePath) end)
+            end
+        else
+            warn("[Headless] ✗ File read failed - content doesn't match!")
+        end
+    else
+        warn("[Headless] ✗ File doesn't exist after write! Your executor might not support absolute paths.")
+        warn("[Headless] Try using a relative path or your executor's workspace folder instead.")
+    end
+end)
+if not testSuccess then
+    warn("[Headless] ✗ File write test failed: " .. tostring(testErr))
+    warn("[Headless] Your executor might not support absolute paths with writefile!")
+    warn("[Headless] Solution: Use your executor's workspace folder path instead.")
+end
 
 loadRemotes()
 
