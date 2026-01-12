@@ -46,18 +46,26 @@ local AFSE_PLACE_IDS = {
 }
 
 local function isAFSE()
+    local currentPlaceId = game.PlaceId
     for _, id in ipairs(AFSE_PLACE_IDS) do
-        if game.PlaceId == id then
+        if currentPlaceId == id then
             return true
         end
     end
     return false
 end
 
+-- Check PlaceId
+local currentPlaceId = game.PlaceId
+print("[Headless] Checking PlaceId: " .. tostring(currentPlaceId))
+
 if not isAFSE() then
-    warn("[Headless] Wrong game! Expected AFSE, got PlaceId: " .. tostring(game.PlaceId))
+    warn("[Headless] Wrong game! Current PlaceId: " .. tostring(currentPlaceId))
+    warn("[Headless] Supported PlaceIds: 17217963498, 130247632398296")
     return
 end
+
+print("[Headless] PlaceId check passed! Starting script...")
 
 -- Check for file functions
 if not writefile or not readfile then
