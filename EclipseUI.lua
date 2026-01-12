@@ -1,10 +1,39 @@
--- EclipseUI v2.3 — Minecraft Hack Client Style (Wurst-inspired)
--- Pure Lua 5.1 (no Luau type annotations)
--- Mobile-friendly with touch support + Settings saving
--- Features: ArrayList, Multi-Select, Search, Blur, Splash, Chat Hide, Snapping, Changelog, Debug
+-- Custom UI Library (Stealth Mode)
+-- Pure Lua 5.1
 
-local EclipseUI = {}
-EclipseUI.__index = EclipseUI
+local UILib = {}
+UILib.__index = UILib
+
+-- Alias for backwards compatibility
+local EclipseUI = UILib
+
+--=============================================================================
+-- ANTI-DETECTION SYSTEM
+--=============================================================================
+-- Generate random string for names to avoid detection
+local function generateRandomName(length)
+    length = length or math.random(8, 16)
+    local chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    local result = ""
+    for i = 1, length do
+        local idx = math.random(1, #chars)
+        result = result .. chars:sub(idx, idx)
+    end
+    return result
+end
+
+-- Generate a unique ID for this session to avoid conflicts
+local SESSION_ID = generateRandomName(8)
+
+-- Stealth names - randomized each load
+local StealthNames = {
+    gui = generateRandomName(),
+    splash = generateRandomName(),
+    blur = generateRandomName(),
+    container = generateRandomName(),
+    panel = generateRandomName(),
+    module = generateRandomName(),
+}
 
 --=============================================================================
 -- SERVICES
@@ -19,6 +48,31 @@ local HttpService = game:GetService("HttpService")
 local GuiService = game:GetService("GuiService")
 local StarterGui = game:GetService("StarterGui")
 local Player = Players.LocalPlayer
+
+-- Try to use a protected GUI parent to avoid detection
+local function getStealthParent()
+    -- Try gethui first (most executors support this)
+    if gethui then
+        local success, result = pcall(gethui)
+        if success and result then
+            return result
+        end
+    end
+    
+    -- Try to protect the GUI
+    if syn and syn.protect_gui then
+        local gui = Instance.new("ScreenGui")
+        syn.protect_gui(gui)
+        gui.Parent = CoreGui
+        return gui.Parent
+    end
+    
+    -- Fallback to CoreGui but with random timing
+    task.wait(math.random() * 0.1)
+    return CoreGui
+end
+
+local StealthParent = getStealthParent()
 
 --=============================================================================
 -- CONFIGURATION
@@ -37,7 +91,7 @@ local Config = {
     isMobile = UIS.TouchEnabled,
     uiScale = 1.0,
     baseTextSize = 14,
-    saveFileName = "EclipseUI_Settings.json",
+    saveFileName = "cfg_" .. SESSION_ID .. ".dat", -- Randomized save file name
     debugMode = false,
 }
 
@@ -45,7 +99,7 @@ local Config = {
 -- SETTINGS SAVE/LOAD SYSTEM
 --=============================================================================
 local SavedSettings = {
-    theme = "Wurst",
+    theme = "Dark",
     notifyPosition = "TopRight",
     fpsCap = 60,
     toggleKey = "RightShift",
@@ -184,8 +238,8 @@ loadSettings()
 -- THEMES (with animation styles)
 --=============================================================================
 local Themes = {
-    ["Wurst"] = {
-        name = "Wurst",
+    ["Dark"] = {
+        name = "Dark",
         bg = Color3.fromRGB(20, 20, 20),
         overlay = Color3.fromRGB(0, 0, 0),
         panel = Color3.fromRGB(30, 30, 30),
@@ -272,7 +326,7 @@ local Themes = {
 }
 
 -- Apply saved theme
-local CurrentTheme = Themes[SavedSettings.theme] or Themes["Wurst"]
+local CurrentTheme = Themes[SavedSettings.theme] or Themes["Dark"]
 
 --=============================================================================
 -- UTILITY FUNCTIONS
@@ -283,6 +337,10 @@ local function create(className, props, children)
         for k, v in pairs(props) do
             inst[k] = v
         end
+    end
+    -- Auto-randomize Name if not explicitly set (stealth)
+    if not props or not props.Name then
+        inst.Name = generateRandomName(6)
     end
     if children then
         for _, child in ipairs(children) do
@@ -429,11 +487,11 @@ end)
 --=============================================================================
 -- MAIN WINDOW CREATION
 --=============================================================================
-function EclipseUI:CreateWindow(cfg)
+function UILib:CreateWindow(cfg)
     cfg = cfg or {}
     
     -- Apply saved or configured theme
-    local themeName = SavedSettings.theme or cfg.Theme or "Wurst"
+    local themeName = SavedSettings.theme or cfg.Theme or "Dark"
     if Themes[themeName] then
         CurrentTheme = Themes[themeName]
     end
@@ -452,29 +510,23 @@ function EclipseUI:CreateWindow(cfg)
     -- Panel snapping removed (was causing bugs)
     local autoHideOnChat = cfg.AutoHideOnChat == nil and true or cfg.AutoHideOnChat
     
-    -- Always log config values to help debug (print to console)
-    print("[DougysUI] Config received:")
-    print("  SearchBar:", cfg.SearchBar, "-> showSearchBar:", showSearchBar)
-    print("  Title:", cfg.Title, "SplashTitle:", cfg.SplashTitle)
-    print("  Subtitle:", cfg.Subtitle, "SplashSubtitle:", cfg.SplashSubtitle)
+    -- Removed debug prints for stealth
     
-    local splashTitle = cfg.SplashTitle or cfg.Title or "EclipseUI" -- Use Title if SplashTitle not provided
+    local splashTitle = cfg.SplashTitle or cfg.Title or "Menu"
     local splashSubtitle = cfg.SplashSubtitle or cfg.Subtitle or "Loading..."
-    
-    print("[DougysUI] Using splashTitle:", splashTitle, "splashSubtitle:", splashSubtitle)
     
     Config.debugMode = SavedSettings.debugMode or false
     
     debugLog("CreateWindow called with config")
     
-    -- Main ScreenGui
+    -- Main ScreenGui with randomized name for stealth
     local gui = create("ScreenGui", {
-        Name = cfg.Title or "EclipseUI_v2",
+        Name = StealthNames.gui .. "_" .. generateRandomName(4), -- Random name to avoid detection
         IgnoreGuiInset = true,
         ResetOnSpawn = false,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-        DisplayOrder = 999999,
-        Parent = CoreGui
+        DisplayOrder = math.random(900000, 999999), -- Randomize display order
+        Parent = StealthParent
     })
 
     --=========================================================================
@@ -485,7 +537,7 @@ function EclipseUI:CreateWindow(cfg)
     
     if showSplash then
         splashGui = create("Frame", {
-            Name = "SplashScreen",
+            Name = StealthNames.splash,
             Size = UDim2.fromOffset(320, 160),
             AnchorPoint = Vector2.new(0.5, 0.5),
             Position = UDim2.fromScale(0.5, 0.5),
@@ -574,7 +626,7 @@ function EclipseUI:CreateWindow(cfg)
     local blurEffect
     if enableBlur then
         blurEffect = Instance.new("BlurEffect")
-        blurEffect.Name = "EclipseUIBlur"
+        blurEffect.Name = StealthNames.blur
         blurEffect.Size = 0
         blurEffect.Parent = game:GetService("Lighting")
     end
@@ -592,7 +644,7 @@ function EclipseUI:CreateWindow(cfg)
     
     -- Container for all panels (with UIScale for scaling)
     local panelContainer = create("Frame", {
-        Name = "PanelContainer",
+        Name = StealthNames.container,
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
         Parent = gui
@@ -641,7 +693,7 @@ function EclipseUI:CreateWindow(cfg)
     -- ARRAY LIST (shows enabled modules when menu is hidden)
     --=========================================================================
     local arrayList = create("Frame", {
-        Name = "ArrayList",
+        Name = generateRandomName(8),
         BackgroundTransparency = 1,
         Size = UDim2.fromOffset(200, 400),
         AnchorPoint = Vector2.new(1, 0),
@@ -723,7 +775,7 @@ function EclipseUI:CreateWindow(cfg)
     
     if showSearchBar then
         searchBarFrame = create("Frame", {
-            Name = "SearchBar",
+            Name = generateRandomName(8),
             BackgroundColor3 = theme.panel,
             BackgroundTransparency = 0.1,
         BorderSizePixel = 0,
@@ -762,7 +814,7 @@ function EclipseUI:CreateWindow(cfg)
         })
         
         searchResults = create("Frame", {
-            Name = "SearchResults",
+            Name = generateRandomName(8),
         BackgroundColor3 = theme.panel,
         BorderSizePixel = 0,
             Size = UDim2.new(1, 0, 0, 0),
@@ -1216,7 +1268,7 @@ function EclipseUI:CreateWindow(cfg)
         _notifyPosition = notifyPosition,
         _connections = { toggleConn },
     }
-    setmetatable(window, { __index = EclipseUI })
+    setmetatable(window, { __index = UILib })
     
     --=========================================================================
     -- NOTIFICATION SYSTEM (Configurable)
@@ -1630,8 +1682,8 @@ function EclipseUI:CreateWindow(cfg)
                 clDragging = true
                 clDragStart = input.Position
                 clStartPos = changelogFrame.Position
-                input.Changed:Connect(function()
-                    if input.UserInputState == Enum.UserInputState.End then
+                    input.Changed:Connect(function()
+                        if input.UserInputState == Enum.UserInputState.End then
                         clDragging = false
                     end
                 end)
@@ -1931,7 +1983,7 @@ function EclipseUI:CreateWindow(cfg)
         position = position or UDim2.fromOffset(15 + (#window._panels * (panelWidth + 15)), 15)
         
         local panel = create("Frame", {
-            Name = "Panel_" .. name,
+            Name = generateRandomName(8),
             BackgroundColor3 = theme.panel,
             BorderSizePixel = 0,
             Size = UDim2.fromOffset(panelWidth, scaled(Config.headerHeight)),
@@ -2107,7 +2159,7 @@ function EclipseUI:CreateWindow(cfg)
             local hasSettings = cfg.settings and #cfg.settings > 0
             
             local moduleHolder = create("Frame", {
-                Name = "Module_" .. (cfg.name or "Module"),
+                Name = generateRandomName(8),
                 BackgroundTransparency = 1,
                 Size = UDim2.new(1, 0, 0, scaled(Config.moduleHeight)),
                 AutomaticSize = Enum.AutomaticSize.Y,
@@ -2733,7 +2785,7 @@ function EclipseUI:CreateWindow(cfg)
                     -- Call callback unless we're skipping it (for initial setup)
                     if not skipCallback and setting.callback then
                         task.spawn(setting.callback, value)
-                    end
+                end
                 end
                 -- Initialize slider with default value and call callback
                 updateSlider(value, false) -- Call callback on initial setup
@@ -3028,8 +3080,8 @@ function EclipseUI:CreateWindow(cfg)
                     -- Check for saved single-select state
                     if gameDropdownStates[dropdownNameStr] ~= nil then
                         selectedValues = gameDropdownStates[dropdownNameStr]
-                    else
-                        selectedValues = setting.default or options[1] or ""
+                else
+                    selectedValues = setting.default or options[1] or ""
                     end
                 end
                 
@@ -3184,10 +3236,10 @@ function EclipseUI:CreateWindow(cfg)
                                 updateOptionVisuals()
                                 -- Save dropdown state (multi-select)
                                 local gameDropdownStates = getGameDropdownStates()
-                                local result = {}
-                                for k, _ in pairs(selectedValues) do
-                                    table.insert(result, k)
-                                end
+                                    local result = {}
+                                    for k, _ in pairs(selectedValues) do
+                                        table.insert(result, k)
+                                    end
                                 gameDropdownStates[dropdownNameStr] = result
                                 saveSettings()
                                 if setting.callback then
@@ -3225,7 +3277,7 @@ function EclipseUI:CreateWindow(cfg)
                                     SavedSettings.dropdownStates = {}
                                 end
                                 saveSettings()
-                                print("[Dropdown Save] '" .. dropdownNameStr .. "' = '" .. tostring(selectedValues) .. "'")
+                                -- Debug print removed for stealth
                                 if setting.callback then task.spawn(setting.callback, selectedValues) end
                             end)
                     end
@@ -3711,7 +3763,7 @@ function EclipseUI:CreateWindow(cfg)
     task.defer(function()
         task.wait(showSplash and 2 or 0)
         local saveStatus = canSaveFiles() and "Settings will be saved" or "Settings won't save (no file access)"
-        window:Notify("EclipseUI v2.3 loaded - " .. saveStatus, 4)
+        window:Notify("UI loaded - " .. saveStatus, 4)
     end)
 
     return window
@@ -3720,4 +3772,4 @@ end
 --=============================================================================
 -- RETURN MODULE
 --=============================================================================
-return EclipseUI
+return UILib
