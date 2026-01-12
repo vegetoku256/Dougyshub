@@ -91,7 +91,7 @@ local Config = {
     isMobile = UIS.TouchEnabled,
     uiScale = 1.0,
     baseTextSize = 14,
-    saveFileName = "cfg_" .. SESSION_ID .. ".dat", -- Randomized save file name
+    saveFileName = "DougysUI_Settings.dat", -- Fixed save file name for persistence
     debugMode = false,
 }
 
