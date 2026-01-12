@@ -39,9 +39,23 @@ local Lighting = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 
--- Only run on AFSE
-if game.PlaceId ~= 17217963498 then
-    warn("[Headless] Wrong game! Expected AFSE (17217963498), got " .. tostring(game.PlaceId))
+-- Only run on AFSE (multiple PlaceIds for different versions/servers)
+local AFSE_PLACE_IDS = {
+    17217963498,      -- Original
+    130247632398296,  -- Current/Updated version
+}
+
+local function isAFSE()
+    for _, id in ipairs(AFSE_PLACE_IDS) do
+        if game.PlaceId == id then
+            return true
+        end
+    end
+    return false
+end
+
+if not isAFSE() then
+    warn("[Headless] Wrong game! Expected AFSE, got PlaceId: " .. tostring(game.PlaceId))
     return
 end
 
