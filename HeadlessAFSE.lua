@@ -375,7 +375,8 @@ writeStatus({
     currentZone = getCurrentZone(),
     champions = getOwnedChampions(),
     uptime = 0,
-    timestamp = os.time()
+    timestamp = os.time(),
+    sharedPath = SHARED_PATH
 })
 
 print("[Headless] Initial status written!")
@@ -402,7 +403,8 @@ task.spawn(function()
             currentZone = getCurrentZone(),
             champions = getOwnedChampions(),
             uptime = os.time() - startTime,
-            timestamp = os.time()
+            timestamp = os.time(),
+            sharedPath = SHARED_PATH
         }
         writeStatus(status)
         
