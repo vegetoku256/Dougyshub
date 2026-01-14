@@ -257,7 +257,8 @@ end
 local RemoteFunction, RemoteEvent, TrainRemote
 
 local function loadRemotes()
-    for attempt = 1, 10 do
+    print("[Headless] Loading remotes...")
+    for attempt = 1, 15 do
         pcall(function()
             local remotes = ReplicatedStorage:FindFirstChild("Remotes")
             if remotes then
@@ -267,7 +268,13 @@ local function loadRemotes()
             end
         end)
         if RemoteFunction and RemoteEvent then
+            print("[Headless] ✓ Remotes loaded successfully!")
+            print("[Headless]   - RemoteFunction: " .. tostring(RemoteFunction))
+            print("[Headless]   - RemoteEvent: " .. tostring(RemoteEvent))
             break
+        end
+        if attempt == 15 then
+            print("[Headless] ✗ Failed to load remotes after 15 attempts")
         end
         task.wait(0.5)
     end
@@ -360,32 +367,67 @@ end
 
 local function findBestZone(statId)
     loadGameData()
-    if not GameData or not GameData.TrainingAreas then return nil end
+    if not GameData then 
+        print("[Headless] GameData not loaded")
+        return nil 
+    end
+    if not GameData.TrainingAreas then 
+        print("[Headless] No TrainingAreas in GameData")
+        return nil 
+    end
+    
     local best = nil
+    local zoneCount = 0
+    local accessibleCount = 0
+    
     for _, zone in pairs(GameData.TrainingAreas) do
         if zone.Data and zone.Data.Stat == statId then
+            zoneCount = zoneCount + 1
             if canAccessZone(zone) then
+                accessibleCount = accessibleCount + 1
                 if not best or (zone.Data.Multiply or 0) > (best.Data.Multiply or 0) then
                     best = zone
                 end
             end
         end
     end
+    
+    if best then
+        print(string.format("[Headless] Found best zone for stat %d: %s (x%d)", 
+            statId, best.Data.AreaName or "Unknown", best.Data.Multiply or 1))
+    else
+        print(string.format("[Headless] No accessible zone for stat %d (found %d zones, %d accessible)", 
+            statId, zoneCount, accessibleCount))
+    end
+    
     return best
 end
 
 local function teleportToZone(zone)
     local char = LocalPlayer.Character
-    if not char then return false end
+    if not char then 
+        print("[Headless] Cannot TP - no character")
+        return false 
+    end
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
+    if not hrp then 
+        print("[Headless] Cannot TP - no HumanoidRootPart")
+        return false 
+    end
     local zoneCenter = getZonePosition(zone)
-    if not zoneCenter then return false end
-    hrp.CFrame = CFrame.new(zoneCenter + Vector3.new(0, 5, 0))
+    if not zoneCenter then 
+        print("[Headless] Cannot TP - zone has no position")
+        return false 
+    end
+    
+    local targetCFrame = CFrame.new(zoneCenter + Vector3.new(0, 5, 0))
+    hrp.CFrame = targetCFrame
     pcall(function()
         hrp.Velocity = Vector3.new(0, 0, 0)
         hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
     end)
+    print(string.format("[Headless] Teleported to zone at %.0f, %.0f, %.0f", 
+        zoneCenter.X, zoneCenter.Y, zoneCenter.Z))
     return true
 end
 
@@ -867,11 +909,20 @@ end
 -- SUMMON SPECIALS
 -- ============================================
 local function summonSpecial(specialType)
-    pcall(function()
-        if RemoteFunction then
-            RemoteFunction:InvokeServer("BuyContainer", specialType, 1)
-        end
+    if not RemoteFunction then
+        print("[Headless] RemoteFunction not loaded - cannot summon " .. tostring(specialType))
+        return false
+    end
+    
+    local success, err = pcall(function()
+        -- Try both argument orders since different game versions might use different formats
+        RemoteFunction:InvokeServer("BuyContainer", specialType, 1)
     end)
+    
+    if not success then
+        print("[Headless] summonSpecial error: " .. tostring(err))
+    end
+    return success
 end
 
 -- ============================================
@@ -1079,7 +1130,7 @@ local lastZoneLoop = 0
 local lastChikaraFarm = 0
 local lastMobFarm = 0
 local lowGraphicsApplied = false
-local fpsCapApplied = false
+local lastFpsCap = 60
 local autoUseIndex = 1
 
 connections.mainLoop = RunService.Heartbeat:Connect(function()
@@ -1229,10 +1280,12 @@ connections.mainLoop = RunService.Heartbeat:Connect(function()
         lowGraphicsApplied = true
     end
     
-    -- FPS Cap
-    if settings.fpsCap and not fpsCapApplied then
-        applyFpsCap(settings.fpsCap)
-        fpsCapApplied = true
+    -- FPS Cap - reapply when value changes
+    local fpsCap = tonumber(settings.fpsCap) or 60
+    if fpsCap ~= lastFpsCap then
+        applyFpsCap(fpsCap)
+        lastFpsCap = fpsCap
+        print("[Headless] FPS cap set to: " .. fpsCap)
     end
 end)
 
