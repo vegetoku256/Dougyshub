@@ -196,14 +196,17 @@ local RemoteFunction, RemoteEvent, TrainRemote
 local function loadRemotes()
     for attempt = 1, 10 do
         pcall(function()
-            RemoteFunction = ReplicatedStorage:WaitForChild("RemoteFunction", 5)
-            RemoteEvent = ReplicatedStorage:WaitForChild("RemoteEvent", 5)
-            TrainRemote = ReplicatedStorage:WaitForChild("Train", 5)
+            local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+            if remotes then
+                RemoteFunction = remotes:FindFirstChild("RemoteFunction")
+                RemoteEvent = remotes:FindFirstChild("RemoteEvent")
+                TrainRemote = remotes:FindFirstChild("Train")
+            end
         end)
         if RemoteFunction and RemoteEvent then
             break
         end
-        task.wait(1)
+        task.wait(0.5)
     end
 end
 
@@ -363,8 +366,6 @@ if not testSuccess then
     warn("[Headless] Solution: Use your executor's workspace folder path instead.")
 end
 
-loadRemotes()
-
 -- Write initial status immediately
 writeStatus({
     connected = true,
@@ -381,6 +382,9 @@ writeStatus({
 
 print("[Headless] Initial status written!")
 print("[Headless] If overlay still shows 'Disconnected', make sure the paths match!")
+
+-- Load remotes after status so overlay connects instantly
+loadRemotes()
 
 -- ============================================
 -- MAIN LOOPS
