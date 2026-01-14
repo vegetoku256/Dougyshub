@@ -62,6 +62,22 @@ local function shouldBeConnected()
     return true
 end
 
+local hasSentDisconnect = false
+local function sendDisconnected(reason)
+    if hasSentDisconnect then return end
+    hasSentDisconnect = true
+    writeStatus({
+        connected = false,
+        game = "AFSE",
+        placeId = game.PlaceId,
+        player = Players.LocalPlayer and Players.LocalPlayer.Name or "",
+        uptime = os.time() - startTime,
+        timestamp = os.time(),
+        sharedPath = SHARED_PATH,
+        disconnectReason = reason or "LeftGame"
+    })
+end
+
 -- Check PlaceId
 local currentPlaceId = game.PlaceId
 print("[Headless] Checking PlaceId: " .. tostring(currentPlaceId))
@@ -401,15 +417,7 @@ loadRemotes()
 task.spawn(function()
     while isRunning do
         if not shouldBeConnected() then
-            writeStatus({
-                connected = false,
-                game = "AFSE",
-                placeId = game.PlaceId,
-                player = Players.LocalPlayer and Players.LocalPlayer.Name or "",
-                uptime = os.time() - startTime,
-                timestamp = os.time(),
-                sharedPath = SHARED_PATH
-            })
+            sendDisconnected("NotInAFSE")
             -- Stop loops if we left the game (e.g., Roblox app menu / teleport)
             isRunning = false
             break
@@ -501,10 +509,19 @@ end)
 
 -- Cleanup on leave
 LocalPlayer.AncestryChanged:Connect(function()
+    sendDisconnected("PlayerRemoved")
     isRunning = false
-    writeStatus({ connected = false, timestamp = os.time() })
     for _, conn in pairs(connections) do
         pcall(function() conn:Disconnect() end)
+    end
+end)
+
+-- Fast watchdog: detect leaving AFSE immediately (menu, teleport, place change)
+connections.watchdog = RunService.RenderStepped:Connect(function()
+    if not isRunning then return end
+    if not shouldBeConnected() then
+        sendDisconnected("Watchdog")
+        isRunning = false
     end
 end)
 
