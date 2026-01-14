@@ -236,19 +236,39 @@ function writeStatus(statusData)
     end
 end
 
+local lastSettingsRead = 0
 local function readSettings()
-    pcall(function()
+    local success, err = pcall(function()
         local filePath = getFullPath(SETTINGS_FILE)
         if isfile and isfile(filePath) then
             local content = readfile(filePath)
             local decoded = safeDecode(content)
             if decoded then
+                local changedKeys = {}
                 for key, value in pairs(decoded) do
+                    if settings[key] ~= value then
+                        table.insert(changedKeys, key)
+                    end
                     settings[key] = value
                 end
+                -- Log changes occasionally for debugging
+                if #changedKeys > 0 and (tick() - lastSettingsRead > 5) then
+                    print("[Headless] Settings updated: " .. table.concat(changedKeys, ", "))
+                    lastSettingsRead = tick()
+                end
+            end
+        else
+            -- Try to create an empty settings file if it doesn't exist
+            if not isfile or not isfile(filePath) then
+                pcall(function()
+                    writefile(filePath, "{}")
+                end)
             end
         end
     end)
+    if not success then
+        warn("[Headless] readSettings error: " .. tostring(err))
+    end
 end
 
 -- ============================================
@@ -929,73 +949,105 @@ end
 -- COMMAND PROCESSOR
 -- ============================================
 local function readCommands()
-    pcall(function()
+    local success, err = pcall(function()
         local filePath = getFullPath(COMMANDS_FILE)
         if isfile and isfile(filePath) then
             local content = readfile(filePath)
-            local commands = safeDecode(content)
-            if commands and type(commands) == "table" then
-                for _, cmd in ipairs(commands) do
-                    if cmd.action == "setting" then
-                        settings[cmd.key] = cmd.value
+            if content and content ~= "" and content ~= "[]" then
+                local commands = safeDecode(content)
+                if commands and type(commands) == "table" and #commands > 0 then
+                    print("[Headless] Processing " .. #commands .. " command(s)")
+                    
+                    for _, cmd in ipairs(commands) do
+                        print("[Headless] Command: " .. tostring(cmd.action))
                         
-                        if cmd.key == "autoSellRarity" then
-                            setupAutoSell()
-                        elseif cmd.key == "showZoneVisuals" then
-                            if cmd.value then
-                                createZoneVisuals()
-                            else
-                                clearZoneVisuals()
+                        if cmd.action == "setting" then
+                            settings[cmd.key] = cmd.value
+                            print("[Headless] Setting changed: " .. tostring(cmd.key) .. " = " .. tostring(cmd.value))
+                            
+                            if cmd.key == "autoSellRarity" then
+                                setupAutoSell()
+                            elseif cmd.key == "showZoneVisuals" then
+                                if cmd.value then
+                                    createZoneVisuals()
+                                else
+                                    clearZoneVisuals()
+                                end
+                            elseif cmd.key == "fpsCap" then
+                                applyFpsCap(cmd.value)
+                            elseif cmd.key == "lowGraphics" and cmd.value then
+                                applyLowGraphics()
                             end
-                        elseif cmd.key == "fpsCap" then
-                            applyFpsCap(cmd.value)
-                        elseif cmd.key == "lowGraphics" and cmd.value then
-                            applyLowGraphics()
+                            
+                        elseif cmd.action == "tpBestZone" then
+                            print("[Headless] TP Best Zone command received for stat: " .. tostring(cmd.stat or settings.selectedTPStat))
+                            local statId = getTPStatId(cmd.stat or settings.selectedTPStat)
+                            local best = findBestZone(statId)
+                            if best then
+                                teleportToZone(best)
+                            else
+                                print("[Headless] No zone found for stat " .. tostring(statId))
+                            end
+                            
+                        elseif cmd.action == "interactNPC" then
+                            if cmd.name then
+                                print("[Headless] Interacting with NPC: " .. tostring(cmd.name))
+                                interactWithNPC(cmd.name)
+                            end
+                            
+                        elseif cmd.action == "pullChampionOnce" then
+                            if cmd.podKey then
+                                if RemoteFunction then
+                                    pcall(function()
+                                        local key = tonumber(cmd.podKey) or cmd.podKey
+                                        RemoteFunction:InvokeServer("BuyContainerChamp", key)
+                                        print("[Headless] Pulled champion from pod: " .. tostring(key))
+                                    end)
+                                else
+                                    print("[Headless] Cannot pull champion - RemoteFunction not loaded")
+                                end
+                            else
+                                print("[Headless] Cannot pull champion - no pod key specified")
+                            end
+                            
+                        elseif cmd.action == "pullSpecialOnce" then
+                            if cmd.specialType then
+                                if RemoteFunction then
+                                    pcall(function()
+                                        RemoteFunction:InvokeServer("BuyContainer", cmd.specialType, 1)
+                                        print("[Headless] Pulled from: " .. tostring(cmd.specialType))
+                                    end)
+                                else
+                                    print("[Headless] Cannot pull special - RemoteFunction not loaded")
+                                end
+                            end
+                            
+                        elseif cmd.action == "testWebhook" then
+                            print("[Headless] Testing webhook...")
+                            sendWebhook("Test Webhook", "This is a test from Dougy's Hub!", 5763719)
+                            
+                        elseif cmd.action == "findAllMobs" then
+                            cachedMobs = getMobsList()
+                            print("[Headless] Found " .. #cachedMobs .. " mobs")
+                        else
+                            print("[Headless] Unknown command action: " .. tostring(cmd.action))
                         end
-                        
-                    elseif cmd.action == "tpBestZone" then
-                        local statId = getTPStatId(cmd.stat or settings.selectedTPStat)
-                        local best = findBestZone(statId)
-                        if best then
-                            teleportToZone(best)
-                            print("[Headless] Teleported to best zone for " .. (cmd.stat or settings.selectedTPStat))
-                        end
-                        
-                    elseif cmd.action == "interactNPC" then
-                        if cmd.name then
-                            interactWithNPC(cmd.name)
-                        end
-                        
-                    elseif cmd.action == "pullChampionOnce" then
-                        if cmd.podKey and RemoteFunction then
-                            pcall(function()
-                                local key = tonumber(cmd.podKey) or cmd.podKey
-                                RemoteFunction:InvokeServer("BuyContainerChamp", key)
-                                print("[Headless] Pulled champion from pod: " .. tostring(key))
-                            end)
-                        end
-                        
-                    elseif cmd.action == "pullSpecialOnce" then
-                        if cmd.specialType and RemoteFunction then
-                            pcall(function()
-                                RemoteFunction:InvokeServer("BuyContainer", cmd.specialType, 1)
-                                print("[Headless] Pulled from: " .. tostring(cmd.specialType))
-                            end)
-                        end
-                        
-                    elseif cmd.action == "testWebhook" then
-                        sendWebhook("Test Webhook", "This is a test from Dougy's Hub!", 5763719)
-                        
-                    elseif cmd.action == "findAllMobs" then
-                        cachedMobs = getMobsList()
-                        print("[Headless] Found " .. #cachedMobs .. " mobs")
                     end
+                    
+                    -- Clear commands after processing
+                    writefile(filePath, "[]")
                 end
             end
-            -- Clear commands after reading
-            writefile(filePath, "[]")
+        else
+            -- Create empty commands file if it doesn't exist
+            pcall(function()
+                writefile(filePath, "[]")
+            end)
         end
     end)
+    if not success then
+        warn("[Headless] readCommands error: " .. tostring(err))
+    end
 end
 
 -- ============================================
@@ -1003,7 +1055,12 @@ end
 -- ============================================
 
 print("[Headless] Starting Dougy's Hub Headless Script...")
+print("[Headless] ═══════════════════════════════════════════")
 print("[Headless] Shared folder: " .. SHARED_PATH)
+print("[Headless] Status file: " .. getFullPath(STATUS_FILE))
+print("[Headless] Settings file: " .. getFullPath(SETTINGS_FILE))
+print("[Headless] Commands file: " .. getFullPath(COMMANDS_FILE))
+print("[Headless] ═══════════════════════════════════════════")
 
 -- Test file access
 local testFilePath = getFullPath("_test_write.txt")
