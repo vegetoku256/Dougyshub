@@ -55,6 +55,13 @@ local function isAFSE()
     return false
 end
 
+local function shouldBeConnected()
+    if not isAFSE() then return false end
+    if not Players or not Players.LocalPlayer then return false end
+    if Players.LocalPlayer.Parent == nil then return false end
+    return true
+end
+
 -- Check PlaceId
 local currentPlaceId = game.PlaceId
 print("[Headless] Checking PlaceId: " .. tostring(currentPlaceId))
@@ -393,6 +400,20 @@ loadRemotes()
 -- Communication loop
 task.spawn(function()
     while isRunning do
+        if not shouldBeConnected() then
+            writeStatus({
+                connected = false,
+                game = "AFSE",
+                placeId = game.PlaceId,
+                player = Players.LocalPlayer and Players.LocalPlayer.Name or "",
+                uptime = os.time() - startTime,
+                timestamp = os.time(),
+                sharedPath = SHARED_PATH
+            })
+            -- Stop loops if we left the game (e.g., Roblox app menu / teleport)
+            isRunning = false
+            break
+        end
         -- Read settings from overlay
         readSettings()
         readCommands()
