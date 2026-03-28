@@ -107,6 +107,9 @@ local SavedSettings = {
     arrayListPosition = "Right",
     themeColoredText = true, -- Enable theme-colored text for toggles/buttons
     backgroundMode = "Blur", -- Overlay background: Blur | Black | Snow | Rain
+    backgroundParticleDensity = 72, -- 15-100: rain/snow count when animated background is on
+    antiafkMethod = "M1 VirtualUser (Idled)",
+    antiafkEnabled = false,
     toggleStates = {}, -- Store toggle states per game: { [placeId] = { [moduleName] = true/false } }
     dropdownStates = {}, -- Store dropdown states per game: { [placeId] = { [dropdownName] = value } }
     inputStates = {}, -- Store input values per game: { [placeId] = { [inputName] = value } }
@@ -243,6 +246,34 @@ local function normalizeBackgroundMode()
     end
 end
 normalizeBackgroundMode()
+
+local function normalizeBackgroundParticleDensity()
+    local d = tonumber(SavedSettings.backgroundParticleDensity) or 72
+    SavedSettings.backgroundParticleDensity = math.clamp(math.floor(d + 0.5), 15, 100)
+end
+normalizeBackgroundParticleDensity()
+
+local ANTIAFK_METHOD_OPTIONS = {
+    "M1 VirtualUser (Idled)",
+    "M2 Click simulate",
+    "M3 Nudge move + restore",
+    "M4 Micro teleport",
+}
+local ANTIAFK_VALID = {}
+for _, opt in ipairs(ANTIAFK_METHOD_OPTIONS) do
+    ANTIAFK_VALID[opt] = true
+end
+
+local function normalizeAntiAfkMethod()
+    if type(SavedSettings.antiafkMethod) ~= "string" or not ANTIAFK_VALID[SavedSettings.antiafkMethod] then
+        SavedSettings.antiafkMethod = ANTIAFK_METHOD_OPTIONS[1]
+    end
+end
+normalizeAntiAfkMethod()
+
+if type(SavedSettings.antiafkEnabled) ~= "boolean" then
+    SavedSettings.antiafkEnabled = false
+end
 
 --=============================================================================
 -- THEMES (with animation styles)
@@ -1179,8 +1210,22 @@ function UILib:CreateWindow(cfg)
     local weatherConn = nil
     local rainPool = {}
     local snowPool = {}
-    local RAIN_DROP_COUNT = 52
-    local SNOW_FLAKE_COUNT = 42
+    local antiAfkGeneration = 0
+    local antiAfkConns = {}
+    
+    local function getParticleDensity()
+        return math.clamp(tonumber(SavedSettings.backgroundParticleDensity) or 72, 15, 100)
+    end
+    
+    local function getTargetRainCount()
+        local d = getParticleDensity()
+        return math.clamp(math.floor(22 + d * 1.35), 20, 175)
+    end
+    
+    local function getTargetSnowCount()
+        local d = getParticleDensity()
+        return math.clamp(math.floor(18 + d * 1.15), 16, 150)
+    end
     
     local function getOpenOverlayTransparency()
         if currentBgMode == "Blur" then
@@ -1188,7 +1233,7 @@ function UILib:CreateWindow(cfg)
         elseif currentBgMode == "Black" then
             return 1 - math.clamp(overlayOpacity + 0.2, 0.55, 0.94)
         elseif currentBgMode == "Snow" or currentBgMode == "Rain" then
-            return 1 - math.clamp(overlayOpacity + 0.25, 0.4, 0.72)
+            return 1 - math.clamp(overlayOpacity + 0.5, 0.72, 0.9)
         end
         return 1 - overlayOpacity
     end
@@ -1199,9 +1244,9 @@ function UILib:CreateWindow(cfg)
         elseif currentBgMode == "Black" then
             return Color3.new(0, 0, 0)
         elseif currentBgMode == "Snow" then
-            return Color3.fromRGB(8, 10, 18)
+            return Color3.fromRGB(2, 3, 8)
         elseif currentBgMode == "Rain" then
-            return Color3.fromRGB(10, 12, 20)
+            return Color3.fromRGB(3, 4, 10)
         end
         return CurrentTheme.overlay
     end
@@ -1226,17 +1271,23 @@ function UILib:CreateWindow(cfg)
         end
     end
     
-    local function initRainPool()
-        if #rainPool > 0 then
-            return
+    local function syncRainPoolToCount(n)
+        n = math.clamp(math.floor(n), 12, 180)
+        while #rainPool > n do
+            local d = table.remove(rainPool)
+            if d.frame then
+                pcall(function()
+                    d.frame:Destroy()
+                end)
+            end
         end
-        for _ = 1, RAIN_DROP_COUNT do
+        while #rainPool < n do
             local f = create("Frame", {
                 Parent = effectLayer,
-                BackgroundColor3 = Color3.fromRGB(200, 220, 255),
-                BackgroundTransparency = 0.45,
+                BackgroundColor3 = Color3.fromRGB(210, 230, 255),
+                BackgroundTransparency = 0.32,
                 BorderSizePixel = 0,
-                Size = UDim2.fromOffset(2, 14),
+                Size = UDim2.fromOffset(3, 18),
                 Visible = false,
                 ZIndex = 0,
             })
@@ -1250,16 +1301,22 @@ function UILib:CreateWindow(cfg)
         end
     end
     
-    local function initSnowPool()
-        if #snowPool > 0 then
-            return
+    local function syncSnowPoolToCount(n)
+        n = math.clamp(math.floor(n), 10, 155)
+        while #snowPool > n do
+            local d = table.remove(snowPool)
+            if d.frame then
+                pcall(function()
+                    d.frame:Destroy()
+                end)
+            end
         end
-        for _ = 1, SNOW_FLAKE_COUNT do
-            local sz = math.random(3, 6)
+        while #snowPool < n do
+            local sz = math.random(4, 8)
             local f = create("Frame", {
                 Parent = effectLayer,
                 BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-                BackgroundTransparency = 0.3,
+                BackgroundTransparency = 0.22,
                 BorderSizePixel = 0,
                 Size = UDim2.fromOffset(sz, sz),
                 Visible = false,
@@ -1279,7 +1336,7 @@ function UILib:CreateWindow(cfg)
     
     local function startRainLoop()
         stopWeather()
-        initRainPool()
+        syncRainPoolToCount(getTargetRainCount())
         for _, d in ipairs(rainPool) do
             d.x = math.random()
             d.y = -0.15 - math.random() * 0.35
@@ -1307,7 +1364,7 @@ function UILib:CreateWindow(cfg)
     
     local function startSnowLoop()
         stopWeather()
-        initSnowPool()
+        syncSnowPoolToCount(getTargetSnowCount())
         for _, d in ipairs(snowPool) do
             d.x = math.random()
             d.y = -0.2 - math.random() * 0.4
@@ -1333,6 +1390,137 @@ function UILib:CreateWindow(cfg)
                 d.frame.Position = UDim2.new(d.x, 0, d.y, 0)
             end
         end)
+    end
+    
+    local function refreshWeatherIfActive()
+        if not uiVisible then
+            return
+        end
+        if currentBgMode == "Rain" then
+            stopWeather()
+            startRainLoop()
+        elseif currentBgMode == "Snow" then
+            stopWeather()
+            startSnowLoop()
+        end
+    end
+    
+    local function stopAntiAfk()
+        antiAfkGeneration = antiAfkGeneration + 1
+        for _, c in ipairs(antiAfkConns) do
+            pcall(function()
+                c:Disconnect()
+            end)
+        end
+        for i = #antiAfkConns, 1, -1 do
+            antiAfkConns[i] = nil
+        end
+    end
+    
+    local function startAntiAfk()
+        stopAntiAfk()
+        if not SavedSettings.antiafkEnabled then
+            return
+        end
+        local gen = antiAfkGeneration
+        local VirtualUser = game:GetService("VirtualUser")
+        local method = SavedSettings.antiafkMethod or ANTIAFK_METHOD_OPTIONS[1]
+        
+        local function vuClick2()
+            pcall(function()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new(0, 0))
+            end)
+        end
+        
+        if method == "M1 VirtualUser (Idled)" then
+            table.insert(
+                antiAfkConns,
+                Player.Idled:Connect(function()
+                    task.wait(math.random(1, 3))
+                    if gen ~= antiAfkGeneration then
+                        return
+                    end
+                    vuClick2()
+                end)
+            )
+            task.spawn(function()
+                while gen == antiAfkGeneration do
+                    task.wait(60)
+                    if gen ~= antiAfkGeneration then
+                        break
+                    end
+                    vuClick2()
+                end
+            end)
+        elseif method == "M2 Click simulate" then
+            task.spawn(function()
+                while gen == antiAfkGeneration do
+                    task.wait(48 + math.random() * 18)
+                    if gen ~= antiAfkGeneration then
+                        break
+                    end
+                    pcall(function()
+                        VirtualUser:CaptureController()
+                        local sz = gui.AbsoluteSize
+                        local v = Vector2.new(sz.X * 0.5, sz.Y * 0.5)
+                        VirtualUser:Button1Down(v)
+                        task.wait(0.04)
+                        VirtualUser:Button1Up(v)
+                    end)
+                end
+            end)
+        elseif method == "M3 Nudge move + restore" then
+            task.spawn(function()
+                while gen == antiAfkGeneration do
+                    task.wait(42 + math.random() * 20)
+                    if gen ~= antiAfkGeneration then
+                        break
+                    end
+                    local char = Player.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    if hrp and hum then
+                        local orig = hrp.CFrame
+                        pcall(function()
+                            VirtualUser:CaptureController()
+                            if VirtualUser.SendKeyEvent then
+                                VirtualUser:SendKeyEvent(true, Enum.KeyCode.W, false)
+                                task.wait(0.03)
+                                VirtualUser:SendKeyEvent(false, Enum.KeyCode.W, false)
+                            elseif VirtualUser.SendKey then
+                                VirtualUser:SendKey(true, Enum.KeyCode.W)
+                                task.wait(0.03)
+                                VirtualUser:SendKey(false, Enum.KeyCode.W)
+                            end
+                        end)
+                        pcall(function()
+                            hum:Move(Vector3.new(0.12, 0, 0), true)
+                        end)
+                        task.wait(0.07)
+                        pcall(function()
+                            hrp.CFrame = orig
+                        end)
+                    end
+                end
+            end)
+        elseif method == "M4 Micro teleport" then
+            task.spawn(function()
+                while gen == antiAfkGeneration do
+                    task.wait(35 + math.random() * 15)
+                    if gen ~= antiAfkGeneration then
+                        break
+                    end
+                    local char = Player.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        pcall(function()
+                            hrp.CFrame = hrp.CFrame * CFrame.new(1e-7, 1e-7, 0)
+                        end)
+                    end
+                end
+            end)
+        end
     end
     
     local function applyBackgroundMode(mode, instant)
@@ -1795,6 +1983,7 @@ function UILib:CreateWindow(cfg)
         -- Wait a brief moment for callbacks to execute and cleanup
         task.wait(0.3)
         
+        stopAntiAfk()
         stopWeather()
         
         -- Now destroy connections and UI
@@ -4023,6 +4212,21 @@ function UILib:CreateWindow(cfg)
         end,
     })
     
+    miscPanel:AddSlider({
+        text = "Rain/snow particles",
+        min = 15,
+        max = 100,
+        step = 1,
+        default = SavedSettings.backgroundParticleDensity,
+        suffix = "",
+        tooltip = "More particles = heavier on FPS. Only affects Snow and Rain backgrounds.",
+        callback = function(v)
+            SavedSettings.backgroundParticleDensity = math.clamp(math.floor(v + 0.5), 15, 100)
+            saveSettings()
+            refreshWeatherIfActive()
+        end,
+    })
+    
     local themeNames = {}
     for name, _ in pairs(Themes) do
         table.insert(themeNames, name)
@@ -4036,6 +4240,34 @@ function UILib:CreateWindow(cfg)
         tooltip = "Change UI color theme and animations",
         callback = function(v)
             window:SetTheme(v)
+        end,
+    })
+    
+    miscPanel:AddDropdown({
+        text = "Anti-AFK method",
+        options = ANTIAFK_METHOD_OPTIONS,
+        default = SavedSettings.antiafkMethod,
+        tooltip = "The 1st method is usually all you need. For games that teleport you after idling, the other methods may help.",
+        callback = function(v)
+            SavedSettings.antiafkMethod = v
+            saveSettings()
+            if SavedSettings.antiafkEnabled then
+                startAntiAfk()
+            end
+        end,
+    })
+    
+    miscPanel:AddToggle({
+        name = "Anti-AFK enabled",
+        default = SavedSettings.antiafkEnabled,
+        callback = function(on)
+            SavedSettings.antiafkEnabled = on and true or false
+            saveSettings()
+            if on then
+                startAntiAfk()
+            else
+                stopAntiAfk()
+            end
         end,
     })
     
@@ -4073,6 +4305,12 @@ function UILib:CreateWindow(cfg)
             window:Notify("Low graphics applied (quality and shadows reduced)", 3)
         end,
     })
+    
+    task.defer(function()
+        if SavedSettings.antiafkEnabled then
+            startAntiAfk()
+        end
+    end)
     
     -- Apply saved ArrayList position
     if SavedSettings.arrayListPosition then
