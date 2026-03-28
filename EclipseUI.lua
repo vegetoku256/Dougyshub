@@ -1282,21 +1282,29 @@ function UILib:CreateWindow(cfg)
             end
         end
         while #rainPool < n do
+            local rw = math.random(3, 6)
+            local rh = math.random(26, 44)
             local f = create("Frame", {
                 Parent = effectLayer,
-                BackgroundColor3 = Color3.fromRGB(210, 230, 255),
-                BackgroundTransparency = 0.32,
+                BackgroundColor3 = Color3.fromRGB(235, 248, 255),
+                BackgroundTransparency = math.clamp(math.random() * 0.12 + 0.02, 0, 0.22),
                 BorderSizePixel = 0,
-                Size = UDim2.fromOffset(3, 18),
+                Size = UDim2.fromOffset(rw, rh),
                 Visible = false,
-                ZIndex = 0,
+                ZIndex = 2,
+            })
+            create("UIStroke", {
+                Parent = f,
+                Color = Color3.fromRGB(255, 255, 255),
+                Thickness = 1,
+                Transparency = 0.45,
             })
             table.insert(rainPool, {
                 frame = f,
                 x = math.random(),
                 y = math.random(),
-                vy = 0.35 + math.random() * 0.5,
-                vx = (math.random() - 0.5) * 0.1,
+                vy = 0.55 + math.random() * 0.65,
+                vx = (math.random() - 0.5) * 0.14,
             })
         end
     end
@@ -1312,24 +1320,30 @@ function UILib:CreateWindow(cfg)
             end
         end
         while #snowPool < n do
-            local sz = math.random(4, 8)
+            local sz = math.random(8, 16)
             local f = create("Frame", {
                 Parent = effectLayer,
-                BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-                BackgroundTransparency = 0.22,
+                BackgroundColor3 = Color3.fromRGB(255, 252, 255),
+                BackgroundTransparency = math.clamp(math.random() * 0.14 + 0.03, 0, 0.25),
                 BorderSizePixel = 0,
                 Size = UDim2.fromOffset(sz, sz),
                 Visible = false,
-                ZIndex = 0,
+                ZIndex = 2,
             })
-            makeRounded(f, math.max(1, math.floor(sz / 2)))
+            makeRounded(f, math.max(2, math.floor(sz / 2)))
+            create("UIStroke", {
+                Parent = f,
+                Color = Color3.fromRGB(255, 255, 255),
+                Thickness = math.clamp(math.ceil(sz / 10), 1, 2),
+                Transparency = 0.5,
+            })
             table.insert(snowPool, {
                 frame = f,
                 x = math.random(),
                 y = math.random(),
-                vy = 0.07 + math.random() * 0.14,
-                vx = (math.random() - 0.5) * 0.18,
-                vr = (math.random() - 0.5) * 100,
+                vy = 0.1 + math.random() * 0.18,
+                vx = (math.random() - 0.5) * 0.22,
+                vr = (math.random() - 0.5) * 120,
             })
         end
     end
@@ -1348,7 +1362,7 @@ function UILib:CreateWindow(cfg)
                 dt = 1 / 60
             end
             for _, d in ipairs(rainPool) do
-                d.y = d.y + d.vy * dt * 0.55
+                d.y = d.y + d.vy * dt * 0.78
                 d.x = d.x + d.vx * dt
                 if d.y > 1.08 then
                     d.y = -math.random() * 0.3
@@ -1377,8 +1391,8 @@ function UILib:CreateWindow(cfg)
             end
             local wobbleT = tick()
             for _, d in ipairs(snowPool) do
-                d.y = d.y + d.vy * dt * 0.42
-                d.x = d.x + d.vx * dt + math.sin(wobbleT * 0.65 + d.y * 4) * 0.00035
+                d.y = d.y + d.vy * dt * 0.52
+                d.x = d.x + d.vx * dt + math.sin(wobbleT * 0.65 + d.y * 4) * 0.0009
                 d.frame.Rotation = (d.frame.Rotation + d.vr * dt) % 360
                 if d.y > 1.1 then
                     d.y = -math.random() * 0.25
