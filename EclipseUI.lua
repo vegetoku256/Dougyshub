@@ -106,6 +106,7 @@ local SavedSettings = {
     debugMode = false,
     arrayListPosition = "Right",
     themeColoredText = true, -- Enable theme-colored text for toggles/buttons
+    backgroundMode = "Blur", -- Overlay background: Blur | Black | Snow | Rain
     toggleStates = {}, -- Store toggle states per game: { [placeId] = { [moduleName] = true/false } }
     dropdownStates = {}, -- Store dropdown states per game: { [placeId] = { [dropdownName] = value } }
     inputStates = {}, -- Store input values per game: { [placeId] = { [inputName] = value } }
@@ -233,6 +234,15 @@ end
 
 -- Load settings on start
 loadSettings()
+
+local VALID_BACKGROUND_MODES = { Blur = true, Black = true, Snow = true, Rain = true }
+local function normalizeBackgroundMode()
+    local m = SavedSettings.backgroundMode
+    if type(m) ~= "string" or not VALID_BACKGROUND_MODES[m] then
+        SavedSettings.backgroundMode = "Blur"
+    end
+end
+normalizeBackgroundMode()
 
 --=============================================================================
 -- THEMES (with animation styles)
@@ -621,15 +631,42 @@ function UILib:CreateWindow(cfg)
     end
     
     --=========================================================================
-    -- BLUR EFFECT
+    -- BLUR EFFECT (Lighting; lazy-created if user picks Blur after BlurEffect=false)
     --=========================================================================
-    local blurEffect
+    local Lighting = game:GetService("Lighting")
+    local blurEffect = nil
     if enableBlur then
         blurEffect = Instance.new("BlurEffect")
         blurEffect.Name = StealthNames.blur
         blurEffect.Size = 0
-        blurEffect.Parent = game:GetService("Lighting")
+        blurEffect.Parent = Lighting
     end
+    
+    local function ensureBlurEffect()
+        if blurEffect and blurEffect.Parent then
+            return blurEffect
+        end
+        blurEffect = Instance.new("BlurEffect")
+        blurEffect.Name = StealthNames.blur
+        blurEffect.Size = 0
+        blurEffect.Parent = Lighting
+        return blurEffect
+    end
+    
+    --=========================================================================
+    -- FULLSCREEN EFFECT LAYER (procedural snow / rain, under overlay)
+    --=========================================================================
+    local effectLayer = create("Frame", {
+        Name = generateRandomName(8) .. "_FxBg",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        Visible = false,
+        ZIndex = 0,
+        Active = false,
+        Parent = gui
+    })
     
     -- Dark overlay background (when menu is open)
     local overlay = create("Frame", {
@@ -638,7 +675,7 @@ function UILib:CreateWindow(cfg)
         BackgroundColor3 = theme.overlay,
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        ZIndex = 0,
+        ZIndex = 1,
         Parent = gui
     })
     
@@ -647,6 +684,7 @@ function UILib:CreateWindow(cfg)
         Name = StealthNames.container,
         Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
+        ZIndex = 2,
         Parent = gui
     })
     
@@ -1134,6 +1172,215 @@ function UILib:CreateWindow(cfg)
         hint.Size = UDim2.fromOffset(sz.X + 30, 38)
     end
     
+    --=========================================================================
+    -- BACKGROUND MODE (Blur / Black / Snow / Rain)
+    --=========================================================================
+    local currentBgMode = SavedSettings.backgroundMode
+    local weatherConn = nil
+    local rainPool = {}
+    local snowPool = {}
+    local RAIN_DROP_COUNT = 52
+    local SNOW_FLAKE_COUNT = 42
+    
+    local function getOpenOverlayTransparency()
+        if currentBgMode == "Blur" then
+            return 1 - overlayOpacity
+        elseif currentBgMode == "Black" then
+            return 1 - math.clamp(overlayOpacity + 0.2, 0.55, 0.94)
+        elseif currentBgMode == "Snow" or currentBgMode == "Rain" then
+            return 1 - math.clamp(overlayOpacity + 0.25, 0.4, 0.72)
+        end
+        return 1 - overlayOpacity
+    end
+    
+    local function getOpenOverlayColor()
+        if currentBgMode == "Blur" then
+            return CurrentTheme.overlay
+        elseif currentBgMode == "Black" then
+            return Color3.new(0, 0, 0)
+        elseif currentBgMode == "Snow" then
+            return Color3.fromRGB(8, 10, 18)
+        elseif currentBgMode == "Rain" then
+            return Color3.fromRGB(10, 12, 20)
+        end
+        return CurrentTheme.overlay
+    end
+    
+    local function stopWeather()
+        if weatherConn then
+            pcall(function()
+                weatherConn:Disconnect()
+            end)
+            weatherConn = nil
+        end
+        effectLayer.Visible = false
+        for _, d in ipairs(rainPool) do
+            if d.frame and d.frame.Parent then
+                d.frame.Visible = false
+            end
+        end
+        for _, d in ipairs(snowPool) do
+            if d.frame and d.frame.Parent then
+                d.frame.Visible = false
+            end
+        end
+    end
+    
+    local function initRainPool()
+        if #rainPool > 0 then
+            return
+        end
+        for _ = 1, RAIN_DROP_COUNT do
+            local f = create("Frame", {
+                Parent = effectLayer,
+                BackgroundColor3 = Color3.fromRGB(200, 220, 255),
+                BackgroundTransparency = 0.45,
+                BorderSizePixel = 0,
+                Size = UDim2.fromOffset(2, 14),
+                Visible = false,
+                ZIndex = 0,
+            })
+            table.insert(rainPool, {
+                frame = f,
+                x = math.random(),
+                y = math.random(),
+                vy = 0.35 + math.random() * 0.5,
+                vx = (math.random() - 0.5) * 0.1,
+            })
+        end
+    end
+    
+    local function initSnowPool()
+        if #snowPool > 0 then
+            return
+        end
+        for _ = 1, SNOW_FLAKE_COUNT do
+            local sz = math.random(3, 6)
+            local f = create("Frame", {
+                Parent = effectLayer,
+                BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+                BackgroundTransparency = 0.3,
+                BorderSizePixel = 0,
+                Size = UDim2.fromOffset(sz, sz),
+                Visible = false,
+                ZIndex = 0,
+            })
+            makeRounded(f, math.max(1, math.floor(sz / 2)))
+            table.insert(snowPool, {
+                frame = f,
+                x = math.random(),
+                y = math.random(),
+                vy = 0.07 + math.random() * 0.14,
+                vx = (math.random() - 0.5) * 0.18,
+                vr = (math.random() - 0.5) * 100,
+            })
+        end
+    end
+    
+    local function startRainLoop()
+        stopWeather()
+        initRainPool()
+        for _, d in ipairs(rainPool) do
+            d.x = math.random()
+            d.y = -0.15 - math.random() * 0.35
+            d.frame.Visible = true
+        end
+        effectLayer.Visible = true
+        weatherConn = RunService.Heartbeat:Connect(function(dt)
+            if type(dt) ~= "number" then
+                dt = 1 / 60
+            end
+            for _, d in ipairs(rainPool) do
+                d.y = d.y + d.vy * dt * 0.55
+                d.x = d.x + d.vx * dt
+                if d.y > 1.08 then
+                    d.y = -math.random() * 0.3
+                    d.x = math.random()
+                end
+                if d.x < -0.08 or d.x > 1.08 then
+                    d.x = math.random()
+                end
+                d.frame.Position = UDim2.new(d.x, 0, d.y, 0)
+            end
+        end)
+    end
+    
+    local function startSnowLoop()
+        stopWeather()
+        initSnowPool()
+        for _, d in ipairs(snowPool) do
+            d.x = math.random()
+            d.y = -0.2 - math.random() * 0.4
+            d.frame.Visible = true
+        end
+        effectLayer.Visible = true
+        weatherConn = RunService.Heartbeat:Connect(function(dt)
+            if type(dt) ~= "number" then
+                dt = 1 / 60
+            end
+            local wobbleT = tick()
+            for _, d in ipairs(snowPool) do
+                d.y = d.y + d.vy * dt * 0.42
+                d.x = d.x + d.vx * dt + math.sin(wobbleT * 0.65 + d.y * 4) * 0.00035
+                d.frame.Rotation = (d.frame.Rotation + d.vr * dt) % 360
+                if d.y > 1.1 then
+                    d.y = -math.random() * 0.25
+                    d.x = math.random()
+                end
+                if d.x < -0.1 or d.x > 1.1 then
+                    d.x = math.random()
+                end
+                d.frame.Position = UDim2.new(d.x, 0, d.y, 0)
+            end
+        end)
+    end
+    
+    local function applyBackgroundMode(mode, instant)
+        currentBgMode = mode
+        stopWeather()
+        overlay.BackgroundColor3 = getOpenOverlayColor()
+        
+        if mode ~= "Blur" and blurEffect then
+            if instant then
+                blurEffect.Size = 0
+            else
+                tween(blurEffect, { Size = 0 }, 0.2)
+            end
+        elseif mode == "Blur" then
+            local b = ensureBlurEffect()
+            if uiVisible then
+                if instant then
+                    b.Size = 8
+                else
+                    tween(b, { Size = 8 }, 0.25)
+                end
+            elseif instant then
+                b.Size = 0
+            end
+        end
+        
+        if uiVisible then
+            local tOpen = getOpenOverlayTransparency()
+            if instant then
+                overlay.BackgroundTransparency = tOpen
+            else
+                tween(overlay, { BackgroundTransparency = tOpen }, 0.25)
+            end
+            if mode == "Snow" then
+                startSnowLoop()
+            elseif mode == "Rain" then
+                startRainLoop()
+            else
+                effectLayer.Visible = false
+            end
+        else
+            if instant then
+                overlay.BackgroundTransparency = 1
+            end
+            effectLayer.Visible = false
+        end
+    end
+    
     local function setUIVisible(visible)
         uiVisible = visible
         panelContainer.Visible = visible
@@ -1146,17 +1393,29 @@ function UILib:CreateWindow(cfg)
             arrayList.Visible = not visible
         end
         
-        -- Animate overlay
         if visible then
-            tween(overlay, { BackgroundTransparency = 1 - overlayOpacity }, 0.25)
-            if blurEffect then
-                tween(blurEffect, { Size = 8 }, 0.25)
+            overlay.BackgroundColor3 = getOpenOverlayColor()
+            tween(overlay, { BackgroundTransparency = getOpenOverlayTransparency() }, 0.25)
+            if currentBgMode == "Blur" then
+                local b = ensureBlurEffect()
+                tween(b, { Size = 8 }, 0.25)
+            elseif blurEffect then
+                tween(blurEffect, { Size = 0 }, 0.2)
+            end
+            if currentBgMode == "Snow" then
+                startSnowLoop()
+            elseif currentBgMode == "Rain" then
+                startRainLoop()
+            else
+                stopWeather()
+                effectLayer.Visible = false
             end
         else
             tween(overlay, { BackgroundTransparency = 1 }, 0.2)
             if blurEffect then
                 tween(blurEffect, { Size = 0 }, 0.2)
             end
+            stopWeather()
         end
         
         debugLog("UI visibility set to: " .. tostring(visible))
@@ -1245,8 +1504,8 @@ function UILib:CreateWindow(cfg)
         setUIVisible(not uiVisible)
     end)
     
-    -- Initial overlay state
-    overlay.BackgroundTransparency = 1 - overlayOpacity
+    -- Initial overlay / background (instant; matches saved backgroundMode)
+    applyBackgroundMode(SavedSettings.backgroundMode, true)
     updateToggleBtnAppearance()
     
     -- Apply saved FPS cap
@@ -1439,11 +1698,22 @@ function UILib:CreateWindow(cfg)
             SavedSettings.theme = themeName
             saveSettings()
             
-            overlay.BackgroundColor3 = CurrentTheme.overlay
+            if currentBgMode == "Blur" then
+                overlay.BackgroundColor3 = CurrentTheme.overlay
+            end
             updateToggleBtnAppearance()
             
             window:Notify("Theme changed to " .. themeName, 2)
         end
+    end
+    
+    function window:SetBackgroundMode(mode)
+        if type(mode) ~= "string" or not VALID_BACKGROUND_MODES[mode] then
+            return
+        end
+        SavedSettings.backgroundMode = mode
+        saveSettings()
+        applyBackgroundMode(mode, false)
     end
     
     --=========================================================================
@@ -1524,6 +1794,8 @@ function UILib:CreateWindow(cfg)
         
         -- Wait a brief moment for callbacks to execute and cleanup
         task.wait(0.3)
+        
+        stopWeather()
         
         -- Now destroy connections and UI
         for _, conn in ipairs(window._connections) do
@@ -3625,25 +3897,6 @@ function UILib:CreateWindow(cfg)
     
     settingsPanel:AddDivider()
     
-    -- Theme Selection
-    local themeNames = {}
-    for name, _ in pairs(Themes) do
-        table.insert(themeNames, name)
-    end
-    table.sort(themeNames)
-    
-    settingsPanel:AddDropdown({
-        text = "Theme",
-        options = themeNames,
-        default = CurrentTheme.name,
-        tooltip = "Change UI color theme and animations",
-        callback = function(v)
-            window:SetTheme(v)
-        end
-    })
-    
-    settingsPanel:AddDivider()
-    
     -- ArrayList Position
     settingsPanel:AddDropdown({
         text = "ArrayList Pos",
@@ -3733,6 +3986,92 @@ function UILib:CreateWindow(cfg)
                 window:Destroy()
             end)
         end
+    })
+    
+    --=========================================================================
+    -- MISC PANEL (under Settings: background, theme, low graphics)
+    --=========================================================================
+    local miscPanel = window:AddPanel("Misc", UDim2.new(1, -240, 0, 15))
+    
+    local function updateMiscPosition()
+        local s = settingsPanel.Instance
+        local m = miscPanel.Instance
+        if not s or not m then
+            return
+        end
+        m.Position = UDim2.new(
+            s.Position.X.Scale,
+            s.Position.X.Offset,
+            s.Position.Y.Scale,
+            s.Position.Y.Offset + s.AbsoluteSize.Y + 8
+        )
+    end
+    settingsPanel.Instance:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateMiscPosition)
+    settingsPanel.Instance:GetPropertyChangedSignal("Position"):Connect(updateMiscPosition)
+    task.defer(updateMiscPosition)
+    
+    miscPanel:AddDropdown({
+        text = "Background",
+        options = { "Blur", "Black", "Snow", "Rain" },
+        default = SavedSettings.backgroundMode,
+        tooltip = "Fullscreen backdrop when the menu is open",
+        callback = function(v)
+            window:SetBackgroundMode(v)
+            if not isInitialLoad then
+                window:Notify("Background: " .. tostring(v), 2)
+            end
+        end,
+    })
+    
+    local themeNames = {}
+    for name, _ in pairs(Themes) do
+        table.insert(themeNames, name)
+    end
+    table.sort(themeNames)
+    
+    miscPanel:AddDropdown({
+        text = "Theme",
+        options = themeNames,
+        default = CurrentTheme.name,
+        tooltip = "Change UI color theme and animations",
+        callback = function(v)
+            window:SetTheme(v)
+        end,
+    })
+    
+    miscPanel:AddDivider()
+    
+    miscPanel:AddButton({
+        name = "Low graphics",
+        tooltip = "Lower quality and shadows for FPS (may hitch once while scanning parts)",
+        callback = function()
+            pcall(function()
+                settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+            end)
+            pcall(function()
+                Lighting.GlobalShadows = false
+            end)
+            pcall(function()
+                local tr = workspace:FindFirstChildOfClass("Terrain")
+                if tr then
+                    tr.Decoration = false
+                end
+            end)
+            local cap = 8000
+            local n = 0
+            pcall(function()
+                for _, inst in ipairs(workspace:GetDescendants()) do
+                    if inst:IsA("BasePart") then
+                        inst.CastShadow = false
+                        n = n + 1
+                        if n >= cap then
+                            break
+                        end
+                    end
+                end
+            end)
+            window:Notify("Low graphics applied (quality and shadows reduced)", 3)
+        end,
     })
     
     -- Apply saved ArrayList position
